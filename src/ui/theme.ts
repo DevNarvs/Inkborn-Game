@@ -24,6 +24,9 @@ export const COLORS = {
   hpBack: 0x3a2f52,
   hpFill: 0x6fde8c,
   hpLow: 0xe25822,
+  enemyName: '#e3a5b5',
+  discOwn: 0x5b3fa8,
+  discEnemy: 0xa83a55,
 } as const;
 
 export const ELEMENT_COLORS: Record<ElementId, number> = {
@@ -49,18 +52,24 @@ export function textStyle(
 export const LAYOUT = {
   hudY: 0,
   hudH: 46,
-  enemyRowY: 54,
-  ownRowY: 158,
+  enemyRowY: 50,
+  ownRowY: 162,
+  rowH: 108,
   plateW: 120,
   plateH: 96,
   plateGap: 7,
-  infoY: 262,
-  infoH: 40,
+  infoY: 274,
+  infoH: 32,
   mainY: 310,
   gridTile: 80,
   gridGap: 6,
   bottomY: 672,
 } as const;
+
+/** Hex number → CSS color string, e.g. 0x8b5cf6 → '#8b5cf6'. */
+export function cssColor(n: number): string {
+  return '#' + n.toString(16).padStart(6, '0');
+}
 
 export function plateX(slot: number): number {
   const total = LAYOUT.plateW * 3 + LAYOUT.plateGap * 2;

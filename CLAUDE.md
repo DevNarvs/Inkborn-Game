@@ -4,7 +4,7 @@
 
 A mobile-first web game: real-time turn-based 3v3 PvP battler (Axie Infinity V1-style card combat) where energy is earned by swiping words on a 4x4 letter grid (Bookworm-style). Dark fantasy aesthetic.
 
-**Full design spec lives in `docs/PRD.md` — read it before making gameplay changes. The PRD is the source of truth for game rules.**
+**Full design spec lives in `inkborn-rumble-prd-v2.md` (repo root) — read it before making gameplay changes. The PRD is the source of truth for game rules.**
 
 ## Current phase: PHASE 0 — Core loop prototype
 
@@ -71,6 +71,6 @@ Phase 0 build order:
 
 - No Convex/backend code yet (but keep engine pure so it ports cleanly)
 - No breeding, no economy, no matchmaking, no accounts
-- No AI-generated art integration — colored rectangles and text labels only
+- No AI-generated art integration — procedurally drawn shapes/vector silhouettes and text labels only (PRD §13 placeholder fallback; no image asset files)
 - No new keywords, elements, classes, or stat types
 - Do not tune locked formulas without flagging it as a PRD change

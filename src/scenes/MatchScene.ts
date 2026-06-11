@@ -14,11 +14,13 @@ import type { Rng } from '../engine/rng';
 import { countRareLetters, wordEnergyValue } from '../engine/scoring';
 import type { Trie } from '../engine/trie';
 import type { CardInstance, SidePlan, WordSubmission } from '../engine/types';
+import { ensureBattleTextures } from '../ui/battleTextures';
 import { GridView } from '../ui/GridView';
 import { HandView } from '../ui/HandView';
 import { HudView } from '../ui/HudView';
 import { ResolutionPlayer } from '../ui/ResolutionPlayer';
 import { TeamView } from '../ui/TeamView';
+import { Vfx } from '../ui/Vfx';
 import { COLORS, GAME_HEIGHT, GAME_WIDTH, LAYOUT, textStyle } from '../ui/theme';
 
 interface MatchSceneData {
@@ -66,22 +68,24 @@ export class MatchScene extends Phaser.Scene {
   }
 
   create(): void {
+    ensureBattleTextures(this);
     this.match = new Match(this.seed, this.trie);
     this.botRng = mulberry32(this.seed ^ 0x9e3779b9);
 
+    const vfx = new Vfx(this);
     this.team = new TeamView(this);
     this.hud = new HudView(this);
     this.grid = new GridView(this, (word) => this.trie.has(word));
     this.hand = new HandView(this);
-    this.player = new ResolutionPlayer(this, this.team);
-    this.add.existing(this.team);
-    this.add.existing(this.hud);
-    this.add.existing(this.grid);
-    this.add.existing(this.hand);
-    this.add.existing(this.player);
+    this.player = new ResolutionPlayer(this, this.team, vfx);
+    this.add.existing(this.team.setDepth(10));
+    this.add.existing(this.hud.setDepth(15));
+    this.add.existing(this.grid.setDepth(20));
+    this.add.existing(this.hand.setDepth(20));
+    this.add.existing(this.player.setDepth(20));
 
     this.info = this.add
-      .text(GAME_WIDTH / 2, LAYOUT.infoY + 10, '', textStyle(13, COLORS.textDim))
+      .text(GAME_WIDTH / 2, LAYOUT.infoY, '', textStyle(13, COLORS.textDim))
       .setOrigin(0.5, 0);
 
     this.stageText = this.add

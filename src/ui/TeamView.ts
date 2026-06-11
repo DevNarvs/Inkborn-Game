@@ -1,155 +1,137 @@
 import Phaser from 'phaser';
 import { FORMATION, UNITS } from '../data/units';
 import type { CombatState, Side } from '../engine/types';
-import { COLORS, ELEMENT_COLORS, LAYOUT, plateX, textStyle } from './theme';
+import { COLORS, GAME_WIDTH, textStyle } from './theme';
+import { UnitSprite } from './UnitSprite';
 
-interface Plate {
-  root: Phaser.GameObjects.Container;
-  bg: Phaser.GameObjects.Rectangle;
-  hpFill: Phaser.GameObjects.Rectangle;
-  hpText: Phaser.GameObjects.Text;
-  shieldText: Phaser.GameObjects.Text;
-  koText: Phaser.GameObjects.Text;
-  assignText: Phaser.GameObjects.Text;
-  hp: number;
-  maxHp: number;
-  shield: number;
-  alive: boolean;
-}
-
-const HP_BAR_W = 104;
-
-/** Six unit plates (enemy row + own row). Holds display-side HP/shield state
- * so the resolution playback can animate deltas event by event. */
+/** The battlefield: two ranks of three UnitSprites (enemy row above, own row
+ * below a faint battle line). Holds display-side HP/shield state so the
+ * resolution playback can animate deltas event by event. */
 export class TeamView extends Phaser.GameObjects.Container {
-  private plates: Plate[] = []; // index = side*3 + slot
+  private sprites: UnitSprite[] = []; // index = side*3 + slot
 
   constructor(scene: Phaser.Scene) {
     super(scene, 0, 0);
+
+    const line = scene.add.graphics();
+    line.lineStyle(1, 0x8b5cf6, 0.15);
+    line.lineBetween(0, 160, GAME_WIDTH, 160);
+    this.add(line);
+
     for (const side of [0, 1] as const) {
-      const rowY = side === 0 ? LAYOUT.ownRowY : LAYOUT.enemyRowY;
       for (let slot = 0; slot < 3; slot++) {
-        this.plates[side * 3 + slot] = this.buildPlate(scene, side, slot, rowY);
+        const sprite = new UnitSprite(scene, side, slot, UNITS[FORMATION[slot]]);
+        this.sprites[side * 3 + slot] = sprite;
+        this.add(sprite);
       }
     }
   }
 
-  private buildPlate(scene: Phaser.Scene, side: Side, slot: number, rowY: number): Plate {
-    const def = UNITS[FORMATION[slot]];
-    const x = plateX(slot);
-    const root = scene.add.container(x, rowY);
+  sprite(side: Side, slot: number): UnitSprite {
+    return this.sprites[side * 3 + slot];
+  }
 
-    const bg = scene.add
-      .rectangle(LAYOUT.plateW / 2, LAYOUT.plateH / 2, LAYOUT.plateW, LAYOUT.plateH, side === 0 ? COLORS.ownAccent : COLORS.enemyAccent)
-      .setStrokeStyle(2, ELEMENT_COLORS[def.element]);
-    const slotText = scene.add.text(6, 4, `${slot + 1}`, textStyle(10, COLORS.textDim));
-    const name = scene.add.text(LAYOUT.plateW / 2, 16, def.name, textStyle(14)).setOrigin(0.5, 0);
-    const hpBack = scene.add
-      .rectangle(LAYOUT.plateW / 2, 46, HP_BAR_W, 10, COLORS.hpBack)
-      .setOrigin(0.5);
-    const hpFill = scene.add
-      .rectangle(LAYOUT.plateW / 2 - HP_BAR_W / 2, 46, HP_BAR_W, 10, COLORS.hpFill)
-      .setOrigin(0, 0.5);
-    const hpText = scene.add.text(LAYOUT.plateW / 2, 56, '', textStyle(11)).setOrigin(0.5, 0);
-    const shieldText = scene.add
-      .text(LAYOUT.plateW / 2, 72, '', textStyle(11, COLORS.shield))
-      .setOrigin(0.5, 0);
-    const koText = scene.add
-      .text(LAYOUT.plateW / 2, LAYOUT.plateH / 2, '✕', textStyle(40, COLORS.danger))
-      .setOrigin(0.5)
-      .setVisible(false);
-    const assignText = scene.add
-      .text(LAYOUT.plateW / 2, LAYOUT.plateH - 9, '', textStyle(10, COLORS.gold))
-      .setOrigin(0.5);
+  chestOf(side: Side, slot: number): { x: number; y: number } {
+    return this.sprite(side, slot).chest();
+  }
 
-    root.add([bg, slotText, name, hpBack, hpFill, hpText, shieldText, koText, assignText]);
-    this.add(root);
-    return {
-      root,
-      bg,
-      hpFill,
-      hpText,
-      shieldText,
-      koText,
-      assignText,
-      hp: def.stats.hp,
-      maxHp: def.stats.hp,
-      shield: 0,
-      alive: true,
-    };
+  headOf(side: Side, slot: number): { x: number; y: number } {
+    return this.sprite(side, slot).head();
   }
 
   /** Authoritative resync from engine state (called between phases). */
   syncFrom(combat: CombatState): void {
     combat.units.forEach((unit, i) => {
-      const plate = this.plates[i];
-      plate.hp = unit.hp;
-      plate.maxHp = unit.maxHp;
-      plate.shield = unit.shield;
-      plate.alive = unit.alive;
-      this.redraw(i);
+      const sprite = this.sprites[i];
+      sprite.hp = unit.hp;
+      sprite.maxHp = unit.maxHp;
+      sprite.shield = unit.shield;
+      sprite.resetFromState(unit.alive);
+      sprite.setStatus(
+        unit.dots.filter((d) => d.kind === 'burn').length,
+        unit.dots.filter((d) => d.kind === 'curse').length,
+      );
     });
   }
 
-  private redraw(index: number): void {
-    const plate = this.plates[index];
-    const ratio = Phaser.Math.Clamp(plate.hp / plate.maxHp, 0, 1);
-    plate.hpFill.width = HP_BAR_W * ratio;
-    plate.hpFill.setFillStyle(ratio < 0.3 ? COLORS.hpLow : COLORS.hpFill);
-    plate.hpText.setText(`${plate.hp}/${plate.maxHp}`);
-    plate.shieldText.setText(plate.shield > 0 ? `⛨ ${plate.shield}` : '');
-    plate.koText.setVisible(!plate.alive);
-    plate.root.setAlpha(plate.alive ? 1 : 0.45);
-  }
-
   applyDamage(side: Side, slot: number, hpLoss: number, blocked: number): void {
-    const index = side * 3 + slot;
-    const plate = this.plates[index];
-    plate.hp = Math.max(plate.hp - hpLoss, 0);
-    plate.shield = Math.max(plate.shield - blocked, 0);
-    this.redraw(index);
-    if (hpLoss > 0) this.float(index, `-${hpLoss}`, COLORS.danger);
-    if (blocked > 0) this.float(index, `⛨${blocked}`, COLORS.shield, 16);
-    this.shake(index);
+    const sprite = this.sprite(side, slot);
+    sprite.hp = Math.max(sprite.hp - hpLoss, 0);
+    sprite.shield = Math.max(sprite.shield - blocked, 0);
+    sprite.redraw();
+    if (hpLoss > 0) this.float(side * 3 + slot, `-${hpLoss}`, COLORS.danger, 0, hpLoss >= 100 ? 22 : 18);
+    if (blocked > 0) this.float(side * 3 + slot, `⛨${blocked}`, COLORS.shield, 16);
+    sprite.hitReact(hpLoss === 0 && blocked > 0);
   }
 
   applyHeal(side: Side, slot: number, amount: number): void {
-    const index = side * 3 + slot;
-    const plate = this.plates[index];
-    plate.hp = Math.min(plate.hp + amount, plate.maxHp);
-    this.redraw(index);
-    this.float(index, `+${amount}`, COLORS.heal);
+    const sprite = this.sprite(side, slot);
+    sprite.hp = Math.min(sprite.hp + amount, sprite.maxHp);
+    sprite.redraw();
+    this.float(side * 3 + slot, `+${amount}`, COLORS.heal);
+  }
+
+  /** Ink Tide chip lands with no per-unit damage events — apply it visually. */
+  applyChipAll(amount: number): void {
+    for (const sprite of this.sprites) {
+      if (!sprite.alive) continue;
+      sprite.hp = Math.max(sprite.hp - amount, 0);
+      sprite.redraw();
+      this.float(sprite.side * 3 + sprite.slot, `-${amount}`, COLORS.danger);
+    }
+  }
+
+  /** Mirror the engine's silent shield reset at the start of each resolution
+   * (D12): braced units get their 'shield' events again right after. */
+  clearShields(): void {
+    for (const sprite of this.sprites) {
+      sprite.shield = 0;
+      sprite.redraw();
+    }
   }
 
   setShield(side: Side, slot: number, total: number): void {
-    const index = side * 3 + slot;
-    this.plates[index].shield = total;
-    this.redraw(index);
-    this.pulse(index);
+    const sprite = this.sprite(side, slot);
+    sprite.shield = total;
+    sprite.redraw();
+    sprite.flashShield();
   }
 
   setKO(side: Side, slot: number): void {
-    const index = side * 3 + slot;
-    const plate = this.plates[index];
-    plate.alive = false;
-    plate.hp = 0;
-    this.redraw(index);
+    this.sprite(side, slot).ko();
   }
 
   setAssignedLabel(slot: number, label: string): void {
-    this.plates[slot].assignText.setText(label); // own side only (index = slot)
+    this.sprites[slot].setAssignedLabel(label); // own side only (index = slot)
   }
 
   highlightActor(side: Side, slot: number): void {
-    this.pulse(side * 3 + slot);
+    this.sprite(side, slot).punch();
   }
 
-  float(index: number, message: string, color: string, yOffset = 0): void {
-    const plate = this.plates[index];
+  punch(side: Side, slot: number, scale = 1.08): void {
+    this.sprite(side, slot).punch(scale);
+  }
+
+  addStatus(side: Side, slot: number, kind: 'burn' | 'curse'): void {
+    this.sprite(side, slot).addStatus(kind);
+  }
+
+  /** Melee step from actor toward victim; onImpact fires at contact. */
+  lunge(side: Side, slot: number, targetSide: Side, targetSlot: number, onImpact: () => void): void {
+    const actor = this.sprite(side, slot);
+    const victim = this.sprite(targetSide, targetSlot);
+    const dx = Phaser.Math.Clamp((victim.chest().x - actor.chest().x) * 0.25, -30, 30);
+    const dy = side === 0 ? -26 : 26; // step toward the opposite rank
+    actor.lunge(dx, dy, onImpact);
+  }
+
+  float(index: number, message: string, color: string, yOffset = 0, size = 18): void {
+    const sprite = this.sprites[index];
     const text = this.scene.add
-      .text(plate.root.x + LAYOUT.plateW / 2, plate.root.y + 30 + yOffset, message, textStyle(18, color))
+      .text(sprite.x + 60, sprite.y + 50 + yOffset, message, textStyle(size, color))
       .setOrigin(0.5)
-      .setDepth(50);
+      .setDepth(65);
     this.scene.tweens.add({
       targets: text,
       y: text.y - 34,
@@ -162,21 +144,5 @@ export class TeamView extends Phaser.GameObjects.Container {
 
   floatAt(side: Side, slot: number, message: string, color: string): void {
     this.float(side * 3 + slot, message, color);
-  }
-
-  private pulse(index: number): void {
-    const { root } = this.plates[index];
-    this.scene.tweens.add({ targets: root, scale: { from: 1.06, to: 1 }, duration: 220 });
-  }
-
-  private shake(index: number): void {
-    const { root } = this.plates[index];
-    const baseX = plateX(index % 3);
-    this.scene.tweens.add({
-      targets: root,
-      x: { from: baseX - 4, to: baseX },
-      duration: 90,
-      repeat: 1,
-    });
   }
 }

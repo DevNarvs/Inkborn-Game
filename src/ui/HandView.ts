@@ -25,7 +25,7 @@ export class HandView extends Phaser.GameObjects.Container {
   private ultsLayer: Phaser.GameObjects.Container;
 
   constructor(scene: Phaser.Scene) {
-    super(scene, 0, LAYOUT.mainY - 24);
+    super(scene, 0, LAYOUT.mainY - 16); // top card row sits below the info strip
     this.cardsLayer = scene.add.container(0, 0);
     this.ultsLayer = scene.add.container(0, 0);
     this.add([this.cardsLayer, this.ultsLayer]);
