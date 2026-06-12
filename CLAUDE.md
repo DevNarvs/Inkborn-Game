@@ -65,7 +65,7 @@ Phase 0 build order:
 - Phaser scenes in `src/scenes/`, UI components in `src/ui/`
 - Unit/card data as typed JSON-like consts in `src/data/`
 - Write unit tests for: grid generation constraints, adjacency path validation, scoring math, damage math. Vitest.
-- Mobile-first: design for ~390px width, touch input primary
+- Mobile-first landscape: design for 844×390 logical pixels (Scale.FIT letterboxes other aspect ratios), touch input primary
 
 ## What NOT to do in Phase 0
 

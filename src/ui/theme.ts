@@ -1,8 +1,8 @@
 import type { ElementId } from '../engine/types';
 
 /** Placeholder dark-fantasy palette (Phase 0: shapes + text only). */
-export const GAME_WIDTH = 390;
-export const GAME_HEIGHT = 844;
+export const GAME_WIDTH = 844;
+export const GAME_HEIGHT = 390;
 
 export const COLORS = {
   bg: 0x0d0a14,
@@ -48,31 +48,68 @@ export function textStyle(
   return { fontFamily: FONT, fontSize: `${size}px`, color, ...extra };
 }
 
-/** Layout bands (390×844 portrait). */
-export const LAYOUT = {
-  hudY: 0,
-  hudH: 46,
-  enemyRowY: 50,
-  ownRowY: 162,
-  rowH: 108,
-  plateW: 120,
-  plateH: 96,
-  plateGap: 7,
-  infoY: 274,
-  infoH: 32,
-  mainY: 310,
-  gridTile: 80,
-  gridGap: 6,
-  bottomY: 672,
-} as const;
-
 /** Hex number → CSS color string, e.g. 0x8b5cf6 → '#8b5cf6'. */
 export function cssColor(n: number): string {
   return '#' + n.toString(16).padStart(6, '0');
 }
 
-export function plateX(slot: number): number {
-  const total = LAYOUT.plateW * 3 + LAYOUT.plateGap * 2;
-  const x0 = (GAME_WIDTH - total) / 2;
-  return x0 + slot * (LAYOUT.plateW + LAYOUT.plateGap);
-}
+/** Layout bands (844×390 landscape).
+ * HUD strip on top · battlefield diorama always visible beneath it ·
+ * bottom band swaps between the card dock and the resolution feed ·
+ * word phase floats as a modal over the dimmed battlefield. */
+export const LAYOUT = {
+  // HUD — single 36px row, full-width timer bar at its bottom edge
+  hudY: 0,
+  hudH: 36,
+  timerY: 34,
+  timerH: 4,
+
+  // Battlefield band (always visible; nothing else may draw inside it)
+  fieldTop: 36,
+  fieldBottom: 243,
+  laneX: 422,
+
+  // Bottom band: card dock / resolution feed (mutually exclusive)
+  stripTop: 243,
+  stripH: 147,
+  ultRowY: 260,
+  ultW: 170,
+  ultH: 30,
+  ultXs: [96, 274, 452],
+  lockX: 761,
+  lockW: 150,
+  lockH: 34,
+  cardRowY: 332,
+  cardW: 86,
+  cardH: 104,
+  cardGap: 6,
+
+  // Word-phase modal (panel center; grid right-biased for the swiping thumb)
+  modalX: 452,
+  modalY: 213,
+  modalW: 574,
+  modalH: 338,
+  scrimAlpha: 0.62,
+  gridTile: 72,
+  gridGap: 6,
+  gridX0: 453, // first tile CENTER; step = gridTile + gridGap
+  gridY0: 96,
+  modalColX: 291, // left control-column center
+
+  // Resolution feed (bottom-left lower-third)
+  feedX: 12,
+  feedY: 278,
+  feedW: 400,
+  feedH: 104,
+  feedLines: 5,
+
+  // Screen-level VFX anchors
+  bannerY: 140, // full-width ultimate/tide banner, center-stage over the dim
+  inkWaveFromY: 330,
+  inkWaveToY: 60,
+  drainOwn: { x: 200, y: 18 },
+  drainEnemy: { x: 790, y: 18 },
+
+  // Between-phase summary line (bottom band is empty during that beat)
+  infoY: 292,
+} as const;

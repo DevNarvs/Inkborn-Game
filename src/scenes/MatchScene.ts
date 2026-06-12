@@ -11,7 +11,7 @@ import {
 import type { WordPhaseOutcome } from '../engine/match';
 import { mulberry32 } from '../engine/rng';
 import type { Rng } from '../engine/rng';
-import { countRareLetters, wordEnergyValue } from '../engine/scoring';
+import { countRareLetters, ENERGY_BANK_MAX, INK_MAX, wordEnergyValue } from '../engine/scoring';
 import type { Trie } from '../engine/trie';
 import type { CardInstance, SidePlan, WordSubmission } from '../engine/types';
 import { ensureBattleTextures } from '../ui/battleTextures';
@@ -21,6 +21,7 @@ import { HudView } from '../ui/HudView';
 import { ResolutionPlayer } from '../ui/ResolutionPlayer';
 import { TeamView } from '../ui/TeamView';
 import { Vfx } from '../ui/Vfx';
+import { WordModal } from '../ui/WordModal';
 import { COLORS, GAME_HEIGHT, GAME_WIDTH, LAYOUT, textStyle } from '../ui/theme';
 
 interface MatchSceneData {
@@ -43,9 +44,9 @@ export class MatchScene extends Phaser.Scene {
   private grid!: GridView;
   private hand!: HandView;
   private player!: ResolutionPlayer;
+  private modal!: WordModal;
   private info!: Phaser.GameObjects.Text;
-  private stageText!: Phaser.GameObjects.Text;
-  private confirmButton!: Phaser.GameObjects.Container;
+  private countdownEvent: Phaser.Time.TimerEvent | null = null;
 
   private staged: WordSubmission | null = null;
   private rumbleSubs: WordSubmission[] = [];
@@ -65,6 +66,7 @@ export class MatchScene extends Phaser.Scene {
     this.assignments = new Map();
     this.ultsOn = new Set();
     this.phaseLocked = false;
+    this.countdownEvent = null; // scene restart clears clock events; drop the stale handle
   }
 
   create(): void {
@@ -75,36 +77,31 @@ export class MatchScene extends Phaser.Scene {
     const vfx = new Vfx(this);
     this.team = new TeamView(this);
     this.hud = new HudView(this);
-    this.grid = new GridView(this, (word) => this.trie.has(word));
+    this.grid = new GridView(this, (word) => this.trie.has(word), {
+      x0: LAYOUT.gridX0,
+      y0: LAYOUT.gridY0,
+      tile: LAYOUT.gridTile,
+      gap: LAYOUT.gridGap,
+    });
     this.hand = new HandView(this);
     this.player = new ResolutionPlayer(this, this.team, vfx);
+    this.modal = new WordModal(this);
     this.add.existing(this.team.setDepth(10));
     this.add.existing(this.hud.setDepth(15));
-    this.add.existing(this.grid.setDepth(20));
     this.add.existing(this.hand.setDepth(20));
     this.add.existing(this.player.setDepth(20));
+    this.add.existing(this.modal.setDepth(30));
+    this.add.existing(this.grid.setDepth(32)); // grid swipes above the modal chrome
 
     this.info = this.add
       .text(GAME_WIDTH / 2, LAYOUT.infoY, '', textStyle(13, COLORS.textDim))
       .setOrigin(0.5, 0);
 
-    this.stageText = this.add
-      .text(GAME_WIDTH / 2 - 30, LAYOUT.bottomY + 22, '', textStyle(16, COLORS.gold))
-      .setOrigin(0.5);
-
-    this.confirmButton = this.add.container(GAME_WIDTH - 56, LAYOUT.bottomY + 22);
-    const confirmBg = this.add
-      .rectangle(0, 0, 72, 40, 0x2e5d34)
-      .setStrokeStyle(2, COLORS.goldHex)
-      .setInteractive({ useHandCursor: true });
-    confirmBg.on('pointerup', () => this.lockWord());
-    this.confirmButton.add([confirmBg, this.add.text(0, 0, '✓', textStyle(20)).setOrigin(0.5)]);
-
+    this.modal.on('confirm', () => this.lockWord());
     this.grid.on('trace', (word: string, path: number[]) => this.onTrace(word, path));
     this.grid.on('tracechange', (word: string, valid: boolean) => {
       if (this.phaseLocked || word.length === 0) return;
-      this.info.setText(valid ? `${word} ✓` : word);
-      this.info.setColor(valid ? COLORS.gold : COLORS.textDim);
+      this.modal.setFeedback(valid ? `${word} ✓` : word, valid ? COLORS.gold : COLORS.textDim);
     });
     this.hand.on('cardTap', (iid: string) => this.onCardTap(iid));
     this.hand.on('ultTap', (slot: number) => this.onUltTap(slot));
@@ -129,20 +126,23 @@ export class MatchScene extends Phaser.Scene {
     const tideNote = s.turn === 12 ? ' · 🌊 tide next turn!' : s.turn >= 13 ? ' · 🌊' : '';
     this.hud.setPhase((s.isRumble ? 'RUMBLE ROUND' : 'WORD PHASE') + tideNote);
 
+    this.modal.setVisible(true);
+    this.modal.reset(s.isRumble);
     this.grid.setVisible(true);
     this.grid.setGrid(s.grid);
     this.hand.setVisible(false);
     this.player.setVisible(false);
-    this.stageText.setText('');
-    this.confirmButton.setVisible(false);
-    this.info.setText(
-      s.isRumble ? 'Swipe many words — ALL score → ✒ ink!' : 'Swipe one word for ⚡ energy',
-    );
-    this.info.setColor(s.isRumble ? COLORS.danger : COLORS.textDim);
+    this.info.setText('');
 
-    this.hud.startTimer(s.isRumble ? RUMBLE_PHASE_SECONDS : WORD_PHASE_SECONDS, () =>
-      this.lockWord(),
-    );
+    const seconds = s.isRumble ? RUMBLE_PHASE_SECONDS : WORD_PHASE_SECONDS;
+    this.hud.startTimer(seconds, () => this.lockWord());
+    this.modal.setCountdown(seconds);
+    this.countdownEvent?.remove(false);
+    this.countdownEvent = this.time.addEvent({
+      delay: 250,
+      loop: true,
+      callback: () => this.modal.setCountdown(this.hud.secondsLeft()),
+    });
   }
 
   private onTrace(word: string, path: number[]): void {
@@ -151,7 +151,7 @@ export class MatchScene extends Phaser.Scene {
 
     if (this.match.state.isRumble) {
       if (!valid || this.rumbleSubs.some((sub) => sub.word === word)) {
-        this.flashInfo(valid ? `${word} — already used` : `${word} ✗`);
+        this.modal.setFeedback(valid ? `${word} — already used` : `${word} ✗`, COLORS.danger);
         return;
       }
       this.rumbleSubs.push({ word, path });
@@ -159,57 +159,69 @@ export class MatchScene extends Phaser.Scene {
         (sum, sub) => sum + wordEnergyValue(sub.word) + countRareLetters(sub.word),
         0,
       );
-      this.stageText.setText(`${this.rumbleSubs.length} word(s) → +${ink}✒`);
-      this.confirmButton.setVisible(true);
-      this.flashInfo(`${word} ✓`, COLORS.gold);
+      // Show what will actually land after the team ink cap, not the raw score.
+      const pool = this.match.state.combat.ink[0];
+      const banked = Math.min(pool + ink, INK_MAX) - pool;
+      this.modal.setStaged(
+        `${this.rumbleSubs.length} word(s)`,
+        `→ +${banked}✒ banked${banked < ink ? ' (cap)' : ''}`,
+      );
+      this.modal.showConfirm(true);
+      this.modal.setFeedback(`${word} ✓`, COLORS.gold);
       return;
     }
 
     if (!valid) {
-      this.flashInfo(`${word} ✗ not a word`);
+      this.modal.setFeedback(`${word} ✗ not a word`, COLORS.danger);
       return;
     }
     this.staged = { word, path };
-    const energy = wordEnergyValue(word);
-    const rare = countRareLetters(word);
+    // Clamp the preview against the bank/ink caps so it shows the real credit.
+    const combat = this.match.state.combat;
+    const energy = Math.min(combat.energy[0] + wordEnergyValue(word), ENERGY_BANK_MAX) - combat.energy[0];
+    const rare = Math.min(combat.ink[0] + countRareLetters(word), INK_MAX) - combat.ink[0];
     const draw = word.length >= 6 ? ' · +1 draw' : '';
-    this.stageText.setText(`${word} — ${energy}⚡${rare > 0 ? ` +${rare}✒` : ''}${draw}`);
-    this.confirmButton.setVisible(true);
-    this.info.setText('Tap ✓ to lock it in, or swipe again');
-    this.info.setColor(COLORS.textDim);
-  }
-
-  private flashInfo(message: string, color: string = COLORS.danger): void {
-    this.info.setText(message);
-    this.info.setColor(color);
+    this.modal.setStaged(word, `${energy}⚡${rare > 0 ? ` +${rare}✒` : ''}${draw}`);
+    this.modal.showConfirm(true);
+    this.modal.setFeedback('Tap ✓ to lock it in, or swipe again');
   }
 
   private lockWord(): void {
     if (this.phaseLocked || this.match.state.phase !== 'word') return;
     this.phaseLocked = true;
     this.hud.stopTimer();
+    this.countdownEvent?.remove(false);
+    this.countdownEvent = null;
     this.grid.clearTrace();
-    this.confirmButton.setVisible(false);
+    this.grid.setVisible(false);
+    this.modal.setVisible(false);
 
     const s = this.match.state;
+    // Earnings apply once both sides submit; snapshot pools first so the
+    // summary reports the credit that actually landed after the caps.
+    const before = { e: [...s.combat.energy] as const, i: [...s.combat.ink] as const };
     const mine = this.match.submitWords(0, s.isRumble ? this.rumbleSubs : this.staged ? [this.staged] : []);
     const botSubs = botPickWords(s.grid, this.trie, s.isRumble, this.botRng);
     const theirs = this.match.submitWords(1, botSubs); // triggers draws + card phase
 
     this.hud.setPools(s.combat);
-    this.info.setText(`You: ${this.describe(mine)}   ·   Enemy: ${this.describe(theirs)}`);
+    this.info.setText(
+      `You: ${this.describe(mine, before.e[0], before.i[0])}   ·   Enemy: ${this.describe(theirs, before.e[1], before.i[1])}`,
+    );
     this.info.setColor(COLORS.textMain);
-    this.stageText.setText('');
     this.time.delayedCall(1700, () => this.enterCardPhase());
   }
 
-  private describe(outcome: WordPhaseOutcome): string {
+  private describe(outcome: WordPhaseOutcome, energyBefore: number, inkBefore: number): string {
     const { accepted, result } = outcome;
     const what =
       accepted.length === 0 ? 'whiff' : accepted.length === 1 ? accepted[0] : `${accepted.length} words`;
+    // Report the applied (cap-clamped) credit, not the raw score.
+    const energy = Math.min(energyBefore + result.energy, ENERGY_BANK_MAX) - energyBefore;
+    const ink = Math.min(inkBefore + result.ink, INK_MAX) - inkBefore;
     const gains: string[] = [];
-    if (result.energy > 0) gains.push(`+${result.energy}⚡`);
-    if (result.ink > 0) gains.push(`+${result.ink}✒`);
+    if (energy > 0) gains.push(`+${energy}⚡`);
+    if (ink > 0) gains.push(`+${ink}✒`);
     if (result.extraDraw > 0) gains.push(`+${result.extraDraw}🂠`);
     return `${what} ${gains.join(' ')}`;
   }
@@ -221,11 +233,9 @@ export class MatchScene extends Phaser.Scene {
     this.assignments.clear();
     this.ultsOn.clear();
 
-    this.grid.setVisible(false);
     this.hand.setVisible(true);
-    this.hud.setPhase('CARD PHASE');
-    this.info.setText('Tap cards to assign · cards power their own unit');
-    this.info.setColor(COLORS.textDim);
+    this.hud.setPhase('CARD PHASE — tap cards to assign');
+    this.info.setText('');
 
     this.renderHand();
     this.hud.startTimer(CARD_PHASE_SECONDS, () => this.lockPlans());

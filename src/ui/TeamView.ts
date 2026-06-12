@@ -4,23 +4,40 @@ import type { CombatState, Side } from '../engine/types';
 import { COLORS, GAME_WIDTH, textStyle } from './theme';
 import { UnitSprite } from './UnitSprite';
 
-/** The battlefield: two ranks of three UnitSprites (enemy row above, own row
- * below a faint battle line). Holds display-side HP/shield state so the
- * resolution playback can animate deltas event by event. */
+/** Axie-style face-off battlefield: own column on the left facing right,
+ * enemy column on the right facing left, attacks crossing the center lane.
+ * Each column is a depth ladder — front unit (slot 0) low, large and nearest
+ * the lane; back unit high, small and tucked toward the screen edge. Holds
+ * display-side HP/shield state so resolution playback can animate deltas. */
+const FEET: Record<0 | 1, { x: number; y: number; scale: number }[]> = {
+  0: [
+    { x: 330, y: 226, scale: 1.0 }, // slot 0 — front, nearest the lane
+    { x: 215, y: 194, scale: 0.92 }, // slot 1 — mid
+    { x: 100, y: 164, scale: 0.85 }, // slot 2 — back, near the screen edge
+  ],
+  1: [
+    // exact mirror about the lane (x' = 844 - x)
+    { x: 514, y: 226, scale: 1.0 },
+    { x: 629, y: 194, scale: 0.92 },
+    { x: 744, y: 164, scale: 0.85 },
+  ],
+};
+
 export class TeamView extends Phaser.GameObjects.Container {
   private sprites: UnitSprite[] = []; // index = side*3 + slot
 
   constructor(scene: Phaser.Scene) {
     super(scene, 0, 0);
 
-    const line = scene.add.graphics();
-    line.lineStyle(1, 0x8b5cf6, 0.15);
-    line.lineBetween(0, 160, GAME_WIDTH, 160);
-    this.add(line);
+    const lane = scene.add.graphics();
+    lane.lineStyle(1, 0x8b5cf6, 0.12);
+    lane.lineBetween(GAME_WIDTH / 2, 46, GAME_WIDTH / 2, 238);
+    this.add(lane);
 
     for (const side of [0, 1] as const) {
-      for (let slot = 0; slot < 3; slot++) {
-        const sprite = new UnitSprite(scene, side, slot, UNITS[FORMATION[slot]]);
+      for (const slot of [2, 1, 0]) {
+        // back-to-front so front units overlap the rank behind them
+        const sprite = new UnitSprite(scene, side, slot, UNITS[FORMATION[slot]], FEET[side][slot], FEET[side][slot].scale);
         this.sprites[side * 3 + slot] = sprite;
         this.add(sprite);
       }
@@ -117,19 +134,23 @@ export class TeamView extends Phaser.GameObjects.Container {
     this.sprite(side, slot).addStatus(kind);
   }
 
-  /** Melee step from actor toward victim; onImpact fires at contact. */
+  /** Melee step from actor toward victim; onImpact fires at contact.
+   * Direction-agnostic: derived from the two anchors, so it works for any
+   * staging (face-off columns, sweeps hitting the back line, etc.). */
   lunge(side: Side, slot: number, targetSide: Side, targetSlot: number, onImpact: () => void): void {
     const actor = this.sprite(side, slot);
     const victim = this.sprite(targetSide, targetSlot);
-    const dx = Phaser.Math.Clamp((victim.chest().x - actor.chest().x) * 0.25, -30, 30);
-    const dy = side === 0 ? -26 : 26; // step toward the opposite rank
+    const s = actor.scaleX;
+    const dx = Phaser.Math.Clamp((victim.chest().x - actor.chest().x) * 0.25, -34, 34) / s;
+    const dy = Phaser.Math.Clamp((victim.chest().y - actor.chest().y) * 0.15, -14, 14) / s;
     actor.lunge(dx, dy, onImpact);
   }
 
   float(index: number, message: string, color: string, yOffset = 0, size = 18): void {
     const sprite = this.sprites[index];
+    const chest = sprite.chest();
     const text = this.scene.add
-      .text(sprite.x + 60, sprite.y + 50 + yOffset, message, textStyle(size, color))
+      .text(chest.x, chest.y - 6 + yOffset, message, textStyle(size, color))
       .setOrigin(0.5)
       .setDepth(65);
     this.scene.tweens.add({

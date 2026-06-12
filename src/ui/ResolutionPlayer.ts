@@ -2,10 +2,10 @@ import Phaser from 'phaser';
 import { FORMATION, UNITS } from '../data/units';
 import type { BattleEvent, Side } from '../engine/types';
 import type { TeamView } from './TeamView';
-import { COLORS, ELEMENT_COLORS, GAME_WIDTH, LAYOUT, textStyle } from './theme';
+import { COLORS, ELEMENT_COLORS, LAYOUT, textStyle } from './theme';
 import { GENERIC_HIT, SKILL_FX, Vfx } from './Vfx';
 
-const LOG_LINES = 11;
+const LOG_LINES = LAYOUT.feedLines;
 
 interface Pending {
   side: Side;
@@ -16,8 +16,9 @@ interface Pending {
 }
 
 /** Replays the engine's BattleEvent log as a choreographed sequence: actors
- * lunge or fire projectiles, impacts land exactly when HP drops, and the
- * combat log scrolls underneath. Zero game logic — pure playback. */
+ * lunge or fire projectiles, impacts land exactly when HP drops, and a
+ * compact feed scrolls in the bottom-left lower-third — the battlefield is
+ * the stage now. Zero game logic — pure playback. */
 export class ResolutionPlayer extends Phaser.GameObjects.Container {
   private team: TeamView;
   private vfx: Vfx;
@@ -28,15 +29,14 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
   private pending: Pending | null = null;
 
   constructor(scene: Phaser.Scene, team: TeamView, vfx: Vfx) {
-    super(scene, 0, LAYOUT.mainY);
+    super(scene, 0, 0);
     this.team = team;
     this.vfx = vfx;
-    const bg = scene.add.rectangle(GAME_WIDTH / 2, 180, GAME_WIDTH - 24, 360, COLORS.panel, 0.92);
-    const title = scene.add
-      .text(GAME_WIDTH / 2, 14, '— RESOLUTION —', textStyle(13, COLORS.gold))
-      .setOrigin(0.5, 0);
-    this.logText = scene.add.text(22, 40, '', textStyle(12, COLORS.textMain, { lineSpacing: 7 }));
-    this.add([bg, title, this.logText]);
+    const bg = scene.add
+      .rectangle(LAYOUT.feedX, LAYOUT.feedY, LAYOUT.feedW, LAYOUT.feedH, COLORS.panel, 0.55)
+      .setOrigin(0, 0);
+    this.logText = scene.add.text(LAYOUT.feedX + 8, LAYOUT.feedY + 8, '', textStyle(12, COLORS.textMain, { lineSpacing: 4 }));
+    this.add([bg, this.logText]);
   }
 
   play(events: BattleEvent[], onDone: () => void): void {
@@ -220,16 +220,18 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
     };
 
     if (fx.delivery === 'melee') {
+      const feet = actor.feet();
       const lungeTo = {
-        x: actor.chest().x + Phaser.Math.Clamp((victimChest.x - actor.chest().x) * 0.25, -30, 30),
-        y: actor.chest().y + (pending.side === 0 ? -26 : 26),
+        x: feet.x + Phaser.Math.Clamp((victimChest.x - actor.chest().x) * 0.25, -34, 34),
+        y: feet.y + Phaser.Math.Clamp((victimChest.y - actor.chest().y) * 0.15, -14, 14),
       };
       fx.pre?.(this.vfx, {
-        attacker: actor.feet(),
+        attacker: feet,
         victim: victimChest,
         figKey: actor.figureTexture(),
         flipX: actor.isFlipped(),
-        lungeTo: { x: lungeTo.x, y: lungeTo.y + 40 },
+        lungeTo,
+        scale: actor.scaleX,
       });
       this.team.lunge(pending.side, pending.slot, event.side, event.slot, land);
       return;
@@ -243,6 +245,7 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
       figKey: actor.figureTexture(),
       flipX: actor.isFlipped(),
       lungeTo: victimChest,
+      scale: actor.scaleX,
     });
     if (fx.noTravel) {
       this.scene.time.delayedCall(120, land);

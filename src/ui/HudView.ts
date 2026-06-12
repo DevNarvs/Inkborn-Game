@@ -3,24 +3,30 @@ import { ENERGY_BANK_MAX, INK_MAX } from '../engine/scoring';
 import type { CombatState } from '../engine/types';
 import { COLORS, GAME_WIDTH, LAYOUT, textStyle } from './theme';
 
-/** Top bar: turn, phase label, both resource pools, and the phase timer. */
+/** Single-row top bar: turn (left), phase label (center), pools split to
+ * mirror the battlefield (own left-of-center, enemy right), and the
+ * full-width phase timer as a thin bar at the strip's bottom edge. */
 export class HudView extends Phaser.GameObjects.Container {
   private turnText: Phaser.GameObjects.Text;
   private phaseText: Phaser.GameObjects.Text;
-  private poolsText: Phaser.GameObjects.Text;
+  private ownPools: Phaser.GameObjects.Text;
+  private enemyPools: Phaser.GameObjects.Text;
   private timerBar: Phaser.GameObjects.Rectangle;
   private timerEvent: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene) {
     super(scene, 0, LAYOUT.hudY);
-    const bg = scene.add.rectangle(GAME_WIDTH / 2, 23, GAME_WIDTH, LAYOUT.hudH, COLORS.panel);
-    this.turnText = scene.add.text(8, 6, 'TURN 1', textStyle(13, COLORS.gold));
-    this.phaseText = scene.add.text(GAME_WIDTH / 2, 6, '', textStyle(13)).setOrigin(0.5, 0);
-    this.poolsText = scene.add.text(8, 26, '', textStyle(12, COLORS.textDim));
+    const bg = scene.add.rectangle(GAME_WIDTH / 2, LAYOUT.hudH / 2, GAME_WIDTH, LAYOUT.hudH, COLORS.panel);
+    this.turnText = scene.add.text(10, LAYOUT.hudH / 2, 'TURN 1', textStyle(13, COLORS.gold)).setOrigin(0, 0.5);
+    this.ownPools = scene.add.text(150, LAYOUT.hudH / 2, '', textStyle(12, COLORS.textDim)).setOrigin(0, 0.5);
+    this.phaseText = scene.add.text(GAME_WIDTH / 2, LAYOUT.hudH / 2, '', textStyle(13)).setOrigin(0.5);
+    this.enemyPools = scene.add
+      .text(GAME_WIDTH - 10, LAYOUT.hudH / 2, '', textStyle(12, COLORS.textDim))
+      .setOrigin(1, 0.5);
     this.timerBar = scene.add
-      .rectangle(0, LAYOUT.hudH - 3, GAME_WIDTH, 3, COLORS.goldHex)
+      .rectangle(0, LAYOUT.timerY, GAME_WIDTH, LAYOUT.timerH, COLORS.goldHex)
       .setOrigin(0, 0.5);
-    this.add([bg, this.turnText, this.phaseText, this.poolsText, this.timerBar]);
+    this.add([bg, this.turnText, this.ownPools, this.phaseText, this.enemyPools, this.timerBar]);
 
     // Containers are not on Phaser's update list; drive the bar from scene ticks.
     const tick = (): void => {
@@ -47,9 +53,8 @@ export class HudView extends Phaser.GameObjects.Container {
   setPools(combat: CombatState, previewEnergy?: number, previewInk?: number): void {
     const e0 = previewEnergy ?? combat.energy[0];
     const i0 = previewInk ?? combat.ink[0];
-    this.poolsText.setText(
-      `YOU ⚡${e0}/${ENERGY_BANK_MAX} ✒${i0}/${INK_MAX}    ENEMY ⚡${combat.energy[1]} ✒${combat.ink[1]}`,
-    );
+    this.ownPools.setText(`YOU ⚡${e0}/${ENERGY_BANK_MAX} ✒${i0}/${INK_MAX}`);
+    this.enemyPools.setText(`ENEMY ⚡${combat.energy[1]} ✒${combat.ink[1]}`);
   }
 
   startTimer(seconds: number, onExpire: () => void): void {
@@ -60,6 +65,10 @@ export class HudView extends Phaser.GameObjects.Container {
       delay: seconds * 1000,
       callback: onExpire,
     });
+  }
+
+  secondsLeft(): number {
+    return this.timerEvent ? this.timerEvent.getRemainingSeconds() : 0;
   }
 
   stopTimer(): void {

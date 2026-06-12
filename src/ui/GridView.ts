@@ -1,13 +1,21 @@
 import Phaser from 'phaser';
 import { GRID_SIZE } from '../engine/grid';
 import { areAdjacent } from '../engine/path';
-import { COLORS, GAME_WIDTH, LAYOUT, textStyle } from './theme';
+import { COLORS, textStyle } from './theme';
+
+export interface GridMetrics {
+  x0: number; // first tile CENTER
+  y0: number;
+  tile: number;
+  gap: number;
+}
 
 /** Swipeable 4x4 letter grid. Pure input/visuals: emits
  *  - 'tracechange' (word: string, valid: boolean) while dragging
  *  - 'trace' (word: string, path: number[]) on release (only legal traces)
  * Adjacency and no-reuse are enforced during the drag itself, so any emitted
- * path is structurally legal; dictionary checks stay with the caller. */
+ * path is structurally legal; dictionary checks stay with the caller.
+ * Lives at scene origin (0,0) so pointer coords map 1:1 to tile coords. */
 export class GridView extends Phaser.GameObjects.Container {
   private tiles: { bg: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
   private letters: string[] = [];
@@ -15,29 +23,29 @@ export class GridView extends Phaser.GameObjects.Container {
   private tracing = false;
   private line: Phaser.GameObjects.Graphics;
   private validator: (word: string) => boolean;
+  private tileSize: number;
 
-  constructor(scene: Phaser.Scene, validator: (word: string) => boolean) {
-    super(scene, 0, LAYOUT.mainY);
+  constructor(scene: Phaser.Scene, validator: (word: string) => boolean, metrics: GridMetrics) {
+    super(scene, 0, 0);
     this.validator = validator;
+    this.tileSize = metrics.tile;
     this.line = scene.add.graphics();
     this.add(this.line);
-
-    const span = LAYOUT.gridTile * GRID_SIZE + LAYOUT.gridGap * (GRID_SIZE - 1);
-    const x0 = (GAME_WIDTH - span) / 2 + LAYOUT.gridTile / 2;
 
     for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
       const col = i % GRID_SIZE;
       const row = Math.floor(i / GRID_SIZE);
-      const x = x0 + col * (LAYOUT.gridTile + LAYOUT.gridGap);
-      const y = LAYOUT.gridTile / 2 + row * (LAYOUT.gridTile + LAYOUT.gridGap);
+      const x = metrics.x0 + col * (metrics.tile + metrics.gap);
+      const y = metrics.y0 + row * (metrics.tile + metrics.gap);
       const bg = scene.add
-        .rectangle(x, y, LAYOUT.gridTile, LAYOUT.gridTile, COLORS.tile)
+        .rectangle(x, y, metrics.tile, metrics.tile, COLORS.tile)
         .setStrokeStyle(2, 0x3a2f52);
       const label = scene.add.text(x, y, '?', textStyle(34)).setOrigin(0.5);
       this.add(bg);
       this.add(label);
       this.tiles.push({ bg, label });
     }
+    this.bringToTop(this.line); // trace polyline renders above the opaque tiles
 
     scene.input.on('pointerdown', this.onDown, this);
     scene.input.on('pointermove', this.onMove, this);
@@ -61,8 +69,8 @@ export class GridView extends Phaser.GameObjects.Container {
     for (let i = 0; i < this.tiles.length; i++) {
       const { bg } = this.tiles[i];
       const dx = pointer.x - bg.x;
-      const dy = pointer.y - (bg.y + this.y);
-      const reach = LAYOUT.gridTile * 0.42;
+      const dy = pointer.y - bg.y;
+      const reach = this.tileSize * 0.42;
       if (Math.abs(dx) <= reach && Math.abs(dy) <= reach) return i;
     }
     return null;

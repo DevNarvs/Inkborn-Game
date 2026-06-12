@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { Side, UnitDef } from '../engine/types';
 import { figureKey } from './battleTextures';
-import { COLORS, LAYOUT, plateX, textStyle } from './theme';
+import { COLORS, textStyle } from './theme';
 
 /** Per-unit idle-breath parameters: amplitude / duration give each silhouette
  * its own personality (Mawgrim heaves, Pyra bounces like a boxer). */
@@ -15,6 +15,9 @@ const BREATH: Record<string, { scaleY: number; ms: number }> = {
  * status chips. Pure display — holds view-side HP/shield so resolution
  * playback can animate deltas, resynced from engine state between phases.
  *
+ * Positioned by its feet anchor; the whole cell scales with formation depth
+ * (back units smaller). Own side faces right, enemy faces left.
+ *
  * Tween ownership (never cross these, or animations collide):
  *   figure → scaleY (breath), tint/alpha (hit flash, KO grey)
  *   rig    → x/y (lunge), angle+scale (KO topple), scale (punch)
@@ -27,6 +30,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   maxHp: number;
   shield = 0;
   alive = true;
+  private baseX: number;
 
   private rig: Phaser.GameObjects.Container;
   private figure: Phaser.GameObjects.Image;
@@ -42,8 +46,17 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private woundGlow: Phaser.GameObjects.Image | null = null;
   private readonly discAlpha: number;
 
-  constructor(scene: Phaser.Scene, side: Side, slot: number, def: UnitDef) {
-    super(scene, plateX(slot), side === 0 ? LAYOUT.ownRowY : LAYOUT.enemyRowY);
+  constructor(
+    scene: Phaser.Scene,
+    side: Side,
+    slot: number,
+    def: UnitDef,
+    feet: { x: number; y: number },
+    depthScale: number,
+  ) {
+    super(scene, feet.x - 60 * depthScale, feet.y - 96 * depthScale);
+    this.setScale(depthScale);
+    this.baseX = this.x;
     this.side = side;
     this.slot = slot;
     this.hp = def.stats.hp;
@@ -58,7 +71,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
     this.rig = scene.add.container(60, 96);
     this.figure = scene.add.image(0, 0, figureKey(def.id, side)).setOrigin(0.5, 1);
-    if (side === 1) this.figure.setFlipX(true);
+    // Baked art trails its tails to the right (faces left): enemy column faces
+    // left as-is; the own column flips to face right, toward the enemy.
+    if (side === 0) this.figure.setFlipX(true);
     this.rig.add(this.figure);
 
     this.shieldHex = scene.add.image(60, 54, 'fx-shield').setTint(0x7ec8e3).setAlpha(0);
@@ -69,10 +84,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     const slotText = scene.add.text(4, 1, `${slot + 1}`, textStyle(9, COLORS.textDim));
     this.shieldChip = scene.add.text(10, 14, '', textStyle(10, COLORS.shield));
     this.statusRow = scene.add.container(12, 30);
-    this.assignText = scene.add.text(116, 14, '', textStyle(10, COLORS.gold)).setOrigin(1, 0);
+    this.assignText = scene.add.text(60, 13, '', textStyle(10, COLORS.gold)).setOrigin(0.5, 0);
 
-    const hpBack = scene.add.rectangle(60, 103, 100, 6, COLORS.hpBack);
-    this.hpFill = scene.add.rectangle(10, 103, 100, 6, COLORS.hpFill).setOrigin(0, 0.5);
+    // Fill drains toward the screen center so the low-HP remnant hugs the
+    // OUTER edge — the front rank's figure overlaps each bar's center-side end.
+    const hpBack = scene.add.rectangle(60, 103, 88, 6, COLORS.hpBack);
+    this.hpFill =
+      side === 1
+        ? scene.add.rectangle(104, 103, 88, 6, COLORS.hpFill).setOrigin(1, 0.5)
+        : scene.add.rectangle(16, 103, 88, 6, COLORS.hpFill).setOrigin(0, 0.5);
     this.hpText = scene.add
       .text(60, 103, '', textStyle(9, COLORS.textMain, { stroke: '#0d0a14', strokeThickness: 2 }))
       .setOrigin(0.5);
@@ -103,15 +123,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   // ── World-space anchors for VFX ─────────────────────────────────────────────
 
   chest(): { x: number; y: number } {
-    return { x: this.x + 60, y: this.y + 56 };
+    return { x: this.x + 60 * this.scaleX, y: this.y + 56 * this.scaleY };
   }
 
   head(): { x: number; y: number } {
-    return { x: this.x + 60, y: this.y + 24 };
+    return { x: this.x + 60 * this.scaleX, y: this.y + 24 * this.scaleY };
   }
 
   feet(): { x: number; y: number } {
-    return { x: this.x + 60, y: this.y + 96 };
+    return { x: this.x + 60 * this.scaleX, y: this.y + 96 * this.scaleY };
   }
 
   figureTexture(): string {
@@ -126,7 +146,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   redraw(): void {
     const ratio = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
-    this.hpFill.width = 100 * ratio;
+    this.hpFill.width = 88 * ratio;
     this.hpFill.setFillStyle(ratio < 0.3 ? COLORS.hpLow : COLORS.hpFill);
     this.hpText.setText(`${this.hp}/${this.maxHp}`);
     this.shieldChip.setText(this.shield > 0 ? `⛨${this.shield}` : '');
@@ -139,6 +159,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   setAssignedLabel(label: string): void {
     this.assignText.setText(label);
+    // Both chips share the top band; the assignment label wins while present
+    // (the shield hex still shows the shield visually).
+    this.shieldChip.setVisible(label.length === 0);
   }
 
   /** Status chips: burn flames + curse drops, capped at 3 total. */
@@ -182,8 +205,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
         if (!this.alive) this.figure.setTint(0x55505f);
       });
     }
-    const baseX = plateX(this.slot);
-    this.scene.tweens.add({ targets: this, x: { from: baseX - 4, to: baseX }, duration: 90, repeat: 1 });
+    this.scene.tweens.add({ targets: this, x: { from: this.baseX - 4, to: this.baseX }, duration: 90, repeat: 1 });
   }
 
   flashShield(): void {
@@ -261,7 +283,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       this.figure.setAlpha(0.4).setScale(1, 1).setTint(0x55505f);
       this.groundDisc.setAlpha(0.15);
     }
-    this.x = plateX(this.slot);
+    this.x = this.baseX;
     this.shieldHex.setAlpha(this.shield > 0 ? 0.35 : 0);
     this.redraw();
   }

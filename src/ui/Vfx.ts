@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { Side } from '../engine/types';
-import { COLORS, GAME_HEIGHT, GAME_WIDTH, cssColor, textStyle } from './theme';
+import { COLORS, GAME_HEIGHT, GAME_WIDTH, LAYOUT, cssColor, textStyle } from './theme';
 
 interface Point {
   x: number;
@@ -212,7 +212,7 @@ export class Vfx {
   }
 
   /** Afterimage trail along a dash path (Phantom Slash, VOIDREND). */
-  dash(figKey: string, flipX: boolean, from: Point, to: Point): void {
+  dash(figKey: string, flipX: boolean, from: Point, to: Point, scale = 1): void {
     [0, 60, 120].forEach((delay, i) => {
       this.scene.time.delayedCall(delay, () => {
         const t = (i + 1) / 4;
@@ -222,7 +222,7 @@ export class Vfx {
           0x8b5cf6,
         );
         if (!image) return;
-        image.setOrigin(0.5, 1).setAlpha(0.4).setFlipX(flipX);
+        image.setOrigin(0.5, 1).setAlpha(0.4).setFlipX(flipX).setScale(scale);
         this.scene.tweens.add({ targets: image, alpha: 0, duration: 250, onComplete: () => image.destroy() });
       });
     });
@@ -261,11 +261,13 @@ export class Vfx {
 
   // ── Callouts, banners, screen-level ─────────────────────────────────────────
 
-  /** Skill-name pill above the actor. Clamped so the upward drift on the
-   * enemy row (head y≈74) never carries the pill into the HUD band (y<46). */
+  /** Skill-name pill above the actor. Floor keeps the pill (≈16px tall, then
+   * a 10px upward drift, 2px margin) out of the HUD band regardless of how
+   * high the formation ladder ever places a head. */
   callout(at: Point, text: string, tintHex: number): void {
+    const floor = LAYOUT.hudH + 28;
     const label = this.scene.add
-      .text(at.x, Math.max(at.y - 12, 74), ` ${text} `, textStyle(11, cssColor(tintHex), { backgroundColor: '#1a1424' }))
+      .text(at.x, Math.max(at.y - 12, floor), ` ${text} `, textStyle(11, cssColor(tintHex), { backgroundColor: '#1a1424' }))
       .setOrigin(0.5, 1)
       .setDepth(66)
       .setScale(0.7);
@@ -280,9 +282,9 @@ export class Vfx {
     });
   }
 
-  /** Full-width ultimate / ink-tide banner over the log panel. */
+  /** Full-width ultimate / ink-tide banner, center-stage over the dim. */
   banner(text: string, tintHex: number): void {
-    const root = this.scene.add.container(GAME_WIDTH / 2, 430).setDepth(70);
+    const root = this.scene.add.container(GAME_WIDTH / 2, LAYOUT.bannerY).setDepth(70);
     root.add(this.scene.add.rectangle(0, 0, GAME_WIDTH, 56, 0x0d0a14, 0.85));
     root.add(this.scene.add.rectangle(0, -28, GAME_WIDTH, 2, tintHex));
     root.add(this.scene.add.rectangle(0, 28, GAME_WIDTH, 2, tintHex));
@@ -320,8 +322,8 @@ export class Vfx {
 
   /** Stolen resource orbs flying between the HUD pool anchors. */
   drainOrbs(toSide: Side, resource: 'energy' | 'ink', n = 3): void {
-    const own = { x: 60, y: 32 };
-    const enemy = { x: 260, y: 32 };
+    const own = LAYOUT.drainOwn;
+    const enemy = LAYOUT.drainEnemy;
     const from = toSide === 0 ? enemy : own;
     const to = toSide === 0 ? own : enemy;
     const tint = resource === 'energy' ? COLORS.goldHex : 0x8b5cf6;
@@ -363,12 +365,12 @@ export class Vfx {
   /** Ink Tide: a violet wave sweeps up the battlefield. */
   inkWave(): void {
     const wave = this.scene.add
-      .rectangle(GAME_WIDTH / 2, 280, GAME_WIDTH, 60, 0x5b3fa8, 0.3)
+      .rectangle(GAME_WIDTH / 2, LAYOUT.inkWaveFromY, GAME_WIDTH, 60, 0x5b3fa8, 0.3)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(60);
     this.scene.tweens.add({
       targets: wave,
-      y: 40,
+      y: LAYOUT.inkWaveToY,
       alpha: 0,
       duration: 600,
       ease: 'Sine.easeOut',
@@ -386,6 +388,8 @@ export interface PreCtx {
   figKey: string;
   flipX: boolean;
   lungeTo: Point;
+  /** Actor's formation depth scale, so afterimages match the figure. */
+  scale: number;
 }
 
 /** How one damage event of this skill looks. KEYS MUST MATCH src/data/cards.ts
@@ -432,7 +436,7 @@ export const SKILL_FX: ReadonlyMap<string, SkillFx> = new Map<string, SkillFx>([
     {
       delivery: 'melee',
       tint: 0x8b5cf6,
-      pre: (vfx, ctx) => vfx.dash(ctx.figKey, ctx.flipX, ctx.attacker, ctx.lungeTo),
+      pre: (vfx, ctx) => vfx.dash(ctx.figKey, ctx.flipX, ctx.attacker, ctx.lungeTo, ctx.scale),
       impact: (vfx, at) => {
         vfx.doubleSlash(at, 0x8b5cf6);
         vfx.burst(at, 0x8b5cf6, 6);
@@ -549,7 +553,7 @@ export const SKILL_FX: ReadonlyMap<string, SkillFx> = new Map<string, SkillFx>([
       delivery: 'melee',
       tint: 0x8b5cf6,
       dimMs: 900,
-      pre: (vfx, ctx) => vfx.dash(ctx.figKey, ctx.flipX, ctx.attacker, ctx.lungeTo),
+      pre: (vfx, ctx) => vfx.dash(ctx.figKey, ctx.flipX, ctx.attacker, ctx.lungeTo, ctx.scale),
       impact: (vfx, at) => {
         vfx.crossSlash(at, 0x8b5cf6, 1.6);
         vfx.burst(at, 0x8b5cf6, 6);
