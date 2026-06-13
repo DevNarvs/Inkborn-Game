@@ -126,6 +126,11 @@ export class TeamView extends Phaser.GameObjects.Container {
     this.sprite(side, slot).punch();
   }
 
+  /** Play an actor's one-shot action animation (no-op in placeholder mode). */
+  playAction(side: Side, slot: number, action: 'attack' | 'skill' | 'hit' | 'down'): void {
+    this.sprite(side, slot).playAction(action);
+  }
+
   punch(side: Side, slot: number, scale = 1.08): void {
     this.sprite(side, slot).punch(scale);
   }

@@ -25,3 +25,4 @@ assets/_originals/
 *.njsproj
 *.sln
 *.sw?
+tools/_strips_preview.png

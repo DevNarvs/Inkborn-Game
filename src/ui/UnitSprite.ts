@@ -3,13 +3,23 @@ import type { Side, UnitDef } from '../engine/types';
 import { figureKey } from './battleTextures';
 import { COLORS, textStyle } from './theme';
 
-/** Per-unit idle-breath parameters: amplitude / duration give each silhouette
- * its own personality (Mawgrim heaves, Pyra bounces like a boxer). */
+/** Per-unit idle-breath parameters (placeholder mode only): amplitude /
+ * duration give each silhouette its own personality. */
 const BREATH: Record<string, { scaleY: number; ms: number }> = {
   vesper: { scaleY: 1.035, ms: 900 },
   mawgrim: { scaleY: 1.045, ms: 1500 },
   pyra: { scaleY: 1.03, ms: 430 },
 };
+
+/** On-screen feet→head height of an animated figure (its body is scaled to this
+ * from the sheet's measured bodyPx, so all three units read the same size). */
+const SPRITE_BODY_PX = 116;
+
+export type UnitAction = 'attack' | 'skill' | 'hit' | 'down';
+
+interface SpriteMeta {
+  bodyPx: number;
+}
 
 /** One battlefield unit: baked figure on a ground disc with name, HP bar and
  * status chips. Pure display — holds view-side HP/shield so resolution
@@ -34,6 +44,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   private rig: Phaser.GameObjects.Container;
   private figure: Phaser.GameObjects.Image;
+  private anim: Phaser.GameObjects.Sprite | null = null; // set iff animated sheets loaded
+  private readonly charId: string;
+  private readonly usingSprites: boolean;
   private groundDisc: Phaser.GameObjects.Image;
   private shieldHex: Phaser.GameObjects.Image;
   private shieldChip: Phaser.GameObjects.Text;
@@ -69,11 +82,25 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       .setTint(side === 0 ? COLORS.discOwn : COLORS.discEnemy)
       .setAlpha(this.discAlpha);
 
+    this.charId = def.id;
+    const meta = (scene.registry.get('spriteMeta') as Record<string, SpriteMeta> | undefined)?.[def.id];
+    this.usingSprites = !!meta && scene.textures.exists(`${def.id}_idle`);
+
     this.rig = scene.add.container(60, 96);
-    this.figure = scene.add.image(0, 0, figureKey(def.id, side)).setOrigin(0.5, 1);
-    // Baked art trails its tails to the right (faces left): enemy column faces
-    // left as-is; the own column flips to face right, toward the enemy.
-    if (side === 0) this.figure.setFlipX(true);
+    if (this.usingSprites && meta) {
+      // Animated art faces RIGHT: own column (right-facing) stays, the enemy
+      // column flips to face left, toward the lane.
+      const sprite = scene.add.sprite(0, 0, `${def.id}_idle`).setOrigin(0.5, 1);
+      sprite.setScale(SPRITE_BODY_PX / meta.bodyPx);
+      if (side === 1) sprite.setFlipX(true);
+      sprite.play(`${def.id}-idle`);
+      this.figure = sprite;
+      this.anim = sprite;
+    } else {
+      // Placeholder silhouettes face LEFT: own column flips to face right.
+      this.figure = scene.add.image(0, 0, figureKey(def.id, side)).setOrigin(0.5, 1);
+      if (side === 0) this.figure.setFlipX(true);
+    }
     this.rig.add(this.figure);
 
     this.shieldHex = scene.add.image(60, 54, 'fx-shield').setTint(0x7ec8e3).setAlpha(0);
@@ -193,6 +220,18 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   // ── Combat reactions ────────────────────────────────────────────────────────
 
+  /** Play a one-shot action animation, then settle back to idle. No-op in
+   * placeholder mode or once KO'd (the figure can't act). */
+  playAction(action: UnitAction): void {
+    if (!this.usingSprites || !this.anim || !this.alive) return;
+    const key = `${this.charId}-${action}`;
+    if (!this.scene.anims.exists(key)) return;
+    this.anim.play(key);
+    this.anim.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      if (this.alive && this.usingSprites) this.anim?.play(`${this.charId}-idle`, true);
+    });
+  }
+
   /** White flash + root shake. Fully-blocked hits flash the shield hex instead. */
   hitReact(fullyBlocked: boolean): void {
     if (fullyBlocked) {
@@ -204,6 +243,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
         this.figure.clearTint();
         if (!this.alive) this.figure.setTint(0x55505f);
       });
+      this.playAction('hit');
     }
     this.scene.tweens.add({ targets: this, x: { from: this.baseX - 4, to: this.baseX }, duration: 90, repeat: 1 });
   }
@@ -252,6 +292,12 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.alive = false;
     this.hp = 0;
     this.killMotion();
+    if (this.usingSprites && this.anim && this.scene.anims.exists(`${this.charId}-down`)) {
+      this.anim.play(`${this.charId}-down`); // the down animation IS the topple
+      this.groundDisc.setAlpha(0.15);
+      this.redraw();
+      return;
+    }
     this.scene.tweens.add({
       targets: this.rig,
       angle: this.side === 0 ? -80 : 80,
@@ -273,6 +319,23 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   resetFromState(alive: boolean): void {
     this.killMotion();
     this.alive = alive;
+    if (this.usingSprites && this.anim) {
+      this.rig.setPosition(60, 96).setAngle(0).setScale(1);
+      this.figure.setAlpha(1).clearTint();
+      if (alive) {
+        this.anim.play(`${this.charId}-idle`, true);
+        this.groundDisc.setAlpha(this.discAlpha);
+      } else if (this.scene.anims.exists(`${this.charId}-down`)) {
+        this.anim.play(`${this.charId}-down`); // hold the final downed frame
+        this.anim.anims.setProgress(1);
+        this.anim.anims.pause();
+        this.groundDisc.setAlpha(0.15);
+      }
+      this.x = this.baseX;
+      this.shieldHex.setAlpha(this.shield > 0 ? 0.35 : 0);
+      this.redraw();
+      return;
+    }
     if (alive) {
       this.rig.setPosition(60, 96).setAngle(0).setScale(1);
       this.figure.setAlpha(1).setScale(1, 1).clearTint();
@@ -294,6 +357,10 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   private startBreath(unitId?: string): void {
     if (unitId) this.breathId = unitId;
+    if (this.usingSprites) {
+      this.anim?.play(`${this.charId}-idle`, true); // the idle animation IS the breath
+      return;
+    }
     const breath = BREATH[this.breathId] ?? { scaleY: 1.03, ms: 900 };
     this.breathTween?.remove();
     this.breathTween = this.scene.tweens.add({
