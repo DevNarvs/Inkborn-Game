@@ -125,6 +125,9 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
         this.pending = { side: event.side, slot: event.slot, name: event.name, isUltimate: event.isUltimate, shakeDone: false };
         const element = UNITS[FORMATION[event.slot]].element;
         const tint = SKILL_FX.get(event.name)?.tint ?? ELEMENT_COLORS[element];
+        // Animated units act here (ult maps to the skill animation); the rig
+        // pop + VFX still play over the top for placeholder mode and FX flavor.
+        this.team.playAction(event.side, event.slot, event.isUltimate ? 'skill' : 'attack');
         if (event.isUltimate) {
           this.vfx.banner(event.name, tint);
           this.vfx.dim(SKILL_FX.get(event.name)?.dimMs ?? 900);

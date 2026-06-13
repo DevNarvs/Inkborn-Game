@@ -1,0 +1,156 @@
+{
+  "chars": {
+    "vesper": {
+      "frameWidth": 340,
+      "frameHeight": 372,
+      "bodyPx": 344
+    },
+    "mawgrim": {
+      "frameWidth": 373,
+      "frameHeight": 360,
+      "bodyPx": 317
+    },
+    "pyra": {
+      "frameWidth": 395,
+      "frameHeight": 361,
+      "bodyPx": 325
+    }
+  },
+  "strips": {
+    "vesper_idle": {
+      "char": "vesper",
+      "action": "idle",
+      "frameWidth": 340,
+      "frameHeight": 372,
+      "frames": 5,
+      "fps": 6,
+      "loop": true
+    },
+    "vesper_attack": {
+      "char": "vesper",
+      "action": "attack",
+      "frameWidth": 340,
+      "frameHeight": 372,
+      "frames": 8,
+      "fps": 14,
+      "loop": false
+    },
+    "vesper_down": {
+      "char": "vesper",
+      "action": "down",
+      "frameWidth": 340,
+      "frameHeight": 372,
+      "frames": 5,
+      "fps": 8,
+      "loop": false
+    },
+    "vesper_hit": {
+      "char": "vesper",
+      "action": "hit",
+      "frameWidth": 340,
+      "frameHeight": 372,
+      "frames": 4,
+      "fps": 14,
+      "loop": false
+    },
+    "vesper_skill": {
+      "char": "vesper",
+      "action": "skill",
+      "frameWidth": 340,
+      "frameHeight": 372,
+      "frames": 10,
+      "fps": 12,
+      "loop": false
+    },
+    "mawgrim_attack": {
+      "char": "mawgrim",
+      "action": "attack",
+      "frameWidth": 373,
+      "frameHeight": 360,
+      "frames": 8,
+      "fps": 14,
+      "loop": false
+    },
+    "mawgrim_down": {
+      "char": "mawgrim",
+      "action": "down",
+      "frameWidth": 373,
+      "frameHeight": 360,
+      "frames": 6,
+      "fps": 8,
+      "loop": false
+    },
+    "mawgrim_hit": {
+      "char": "mawgrim",
+      "action": "hit",
+      "frameWidth": 373,
+      "frameHeight": 360,
+      "frames": 4,
+      "fps": 14,
+      "loop": false
+    },
+    "mawgrim_idle": {
+      "char": "mawgrim",
+      "action": "idle",
+      "frameWidth": 373,
+      "frameHeight": 360,
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "mawgrim_skill": {
+      "char": "mawgrim",
+      "action": "skill",
+      "frameWidth": 373,
+      "frameHeight": 360,
+      "frames": 8,
+      "fps": 12,
+      "loop": false
+    },
+    "pyra_attack": {
+      "char": "pyra",
+      "action": "attack",
+      "frameWidth": 395,
+      "frameHeight": 361,
+      "frames": 8,
+      "fps": 14,
+      "loop": false
+    },
+    "pyra_down": {
+      "char": "pyra",
+      "action": "down",
+      "frameWidth": 395,
+      "frameHeight": 361,
+      "frames": 6,
+      "fps": 8,
+      "loop": false
+    },
+    "pyra_hit": {
+      "char": "pyra",
+      "action": "hit",
+      "frameWidth": 395,
+      "frameHeight": 361,
+      "frames": 4,
+      "fps": 14,
+      "loop": false
+    },
+    "pyra_idle": {
+      "char": "pyra",
+      "action": "idle",
+      "frameWidth": 395,
+      "frameHeight": 361,
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "pyra_skill": {
+      "char": "pyra",
+      "action": "skill",
+      "frameWidth": 395,
+      "frameHeight": 361,
+      "frames": 10,
+      "fps": 12,
+      "loop": false
+    }
+  }
+}
