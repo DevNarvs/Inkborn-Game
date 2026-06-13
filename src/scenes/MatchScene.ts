@@ -12,6 +12,8 @@ import type { WordPhaseOutcome } from '../engine/match';
 import { mulberry32 } from '../engine/rng';
 import type { Rng } from '../engine/rng';
 import { countRareLetters, ENERGY_BANK_MAX, INK_MAX, wordEnergyValue } from '../engine/scoring';
+import { MatchRecorder } from '../engine/stats';
+import { logSummary, recordMatch } from '../ui/statsStore';
 import type { Trie } from '../engine/trie';
 import type { CardInstance, SidePlan, WordSubmission } from '../engine/types';
 import { ensureBattleTextures } from '../ui/battleTextures';
@@ -53,6 +55,8 @@ export class MatchScene extends Phaser.Scene {
   private assignments = new Map<number, CardInstance[]>();
   private ultsOn = new Set<number>();
   private phaseLocked = false;
+  private recorder!: MatchRecorder;
+  private matchStartMs = 0;
 
   constructor() {
     super('Match');
@@ -73,6 +77,8 @@ export class MatchScene extends Phaser.Scene {
     ensureBattleTextures(this);
     this.match = new Match(this.seed, this.trie);
     this.botRng = mulberry32(this.seed ^ 0x9e3779b9);
+    this.recorder = new MatchRecorder(this.seed);
+    this.matchStartMs = Date.now();
 
     const vfx = new Vfx(this);
     this.team = new TeamView(this);
@@ -204,6 +210,16 @@ export class MatchScene extends Phaser.Scene {
     const botSubs = botPickWords(s.grid, this.trie, s.isRumble, this.botRng);
     const theirs = this.match.submitWords(1, botSubs); // triggers draws + card phase
 
+    const banked = (out: WordPhaseOutcome, energyBefore: number, inkBefore: number) => ({
+      words: out.accepted,
+      energyGained: Math.min(energyBefore + out.result.energy, ENERGY_BANK_MAX) - energyBefore,
+      inkGained: Math.min(inkBefore + out.result.ink, INK_MAX) - inkBefore,
+    });
+    this.recorder.recordWords(s.turn, s.isRumble, [
+      banked(mine, before.e[0], before.i[0]),
+      banked(theirs, before.e[1], before.i[1]),
+    ]);
+
     this.hud.setPools(s.combat);
     this.info.setText(
       `You: ${this.describe(mine, before.e[0], before.i[0])}   ·   Enemy: ${this.describe(theirs, before.e[1], before.i[1])}`,
@@ -332,6 +348,7 @@ export class MatchScene extends Phaser.Scene {
     this.phaseLocked = true;
     this.hud.stopTimer();
 
+    const turn = this.match.state.turn; // capture before resolve advances it
     const plan: SidePlan = {
       unitPlays: [...this.assignments.entries()].map(([unitIndex, cards]) => ({
         unitIndex,
@@ -339,16 +356,22 @@ export class MatchScene extends Phaser.Scene {
       })),
       ultimates: [...this.ultsOn],
     };
+    let myInk = 0;
     try {
       this.match.submitPlan(0, plan);
+      myInk = this.spentInk();
     } catch {
       this.match.submitPlan(0, EMPTY_PLAN); // UI bug failsafe: never block the match
     }
+    const botPlan = botPlanCards(this.match.state.zones[1].hand, this.match.state.combat, 1, this.botRng);
+    let botInk = 0;
     try {
-      this.match.submitPlan(1, botPlanCards(this.match.state.zones[1].hand, this.match.state.combat, 1, this.botRng));
+      this.match.submitPlan(1, botPlan);
+      botInk = botPlan.ultimates.reduce((sum, slot) => sum + this.ultimateCost(slot), 0);
     } catch {
       this.match.submitPlan(1, EMPTY_PLAN);
     }
+    this.recorder.recordInkSpent(turn, [myInk, botInk]);
 
     const events = this.match.resolve(); // advances to next turn or ends
     this.enterResolution(events);
@@ -373,6 +396,12 @@ export class MatchScene extends Phaser.Scene {
 
   private showGameOver(): void {
     const winner = this.match.state.winner;
+
+    // Playtest instrumentation: persist this match and print the running §15 scorecard.
+    const record = this.recorder.finish(winner ?? 'draw', Date.now() - this.matchStartMs);
+    recordMatch(record);
+    logSummary();
+
     const overlay = this.add
       .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.82)
       .setDepth(100);
