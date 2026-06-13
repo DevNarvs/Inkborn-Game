@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Trie } from '../engine/trie';
+import { placeholderMode } from '../ui/devFlags';
 import { COLORS, GAME_HEIGHT, GAME_WIDTH, textStyle } from '../ui/theme';
 
 interface StripMeta {
@@ -60,6 +61,7 @@ export class BootScene extends Phaser.Scene {
   /** Best-effort: load animation sheets + register anims. Never throws — a
    * missing/broken manifest just leaves the match on placeholder figures. */
   private async loadSprites(): Promise<void> {
+    if (placeholderMode()) return; // "ugly" playtest: keep the procedural figures
     try {
       const res = await fetch('sprites/sprites.json');
       if (!res.ok) return;

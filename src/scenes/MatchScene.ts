@@ -13,6 +13,7 @@ import { mulberry32 } from '../engine/rng';
 import type { Rng } from '../engine/rng';
 import { countRareLetters, ENERGY_BANK_MAX, INK_MAX, wordEnergyValue } from '../engine/scoring';
 import { MatchRecorder } from '../engine/stats';
+import { placeholderMode, togglePlaceholderMode } from '../ui/devFlags';
 import { StatsHud } from '../ui/StatsHud';
 import { logSummary, recordMatch } from '../ui/statsStore';
 import type { Trie } from '../engine/trie';
@@ -108,6 +109,17 @@ export class MatchScene extends Phaser.Scene {
     this.statsHud = new StatsHud(this);
     this.add.existing(this.statsHud);
     this.input.keyboard?.on('keydown-S', () => this.statsHud.toggle()); // playtest scorecard
+    // P toggles placeholder ("ugly") mode for the PRD fun-test, then reloads.
+    this.input.keyboard?.on('keydown-P', () => {
+      togglePlaceholderMode();
+      window.location.reload();
+    });
+    if (placeholderMode()) {
+      this.add
+        .text(GAME_WIDTH - 6, GAME_HEIGHT - 3, 'PLACEHOLDER · press P for art', textStyle(9, COLORS.textDim))
+        .setOrigin(1, 1)
+        .setDepth(95);
+    }
 
     this.modal.on('confirm', () => this.lockWord());
     this.grid.on('trace', (word: string, path: number[]) => this.onTrace(word, path));
