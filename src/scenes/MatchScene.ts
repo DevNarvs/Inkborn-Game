@@ -13,6 +13,7 @@ import { mulberry32 } from '../engine/rng';
 import type { Rng } from '../engine/rng';
 import { countRareLetters, ENERGY_BANK_MAX, INK_MAX, wordEnergyValue } from '../engine/scoring';
 import { MatchRecorder } from '../engine/stats';
+import { StatsHud } from '../ui/StatsHud';
 import { logSummary, recordMatch } from '../ui/statsStore';
 import type { Trie } from '../engine/trie';
 import type { CardInstance, SidePlan, WordSubmission } from '../engine/types';
@@ -57,6 +58,7 @@ export class MatchScene extends Phaser.Scene {
   private phaseLocked = false;
   private recorder!: MatchRecorder;
   private matchStartMs = 0;
+  private statsHud!: StatsHud;
 
   constructor() {
     super('Match');
@@ -102,6 +104,10 @@ export class MatchScene extends Phaser.Scene {
     this.info = this.add
       .text(GAME_WIDTH / 2, LAYOUT.infoY, '', textStyle(13, COLORS.textDim))
       .setOrigin(0.5, 0);
+
+    this.statsHud = new StatsHud(this);
+    this.add.existing(this.statsHud);
+    this.input.keyboard?.on('keydown-S', () => this.statsHud.toggle()); // playtest scorecard
 
     this.modal.on('confirm', () => this.lockWord());
     this.grid.on('trace', (word: string, path: number[]) => this.onTrace(word, path));
@@ -401,6 +407,7 @@ export class MatchScene extends Phaser.Scene {
     const record = this.recorder.finish(winner ?? 'draw', Date.now() - this.matchStartMs);
     recordMatch(record);
     logSummary();
+    this.statsHud.refresh(); // update the on-screen scorecard if it's open
 
     const overlay = this.add
       .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.82)
