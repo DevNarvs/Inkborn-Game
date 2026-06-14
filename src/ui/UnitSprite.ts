@@ -58,6 +58,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private breathTween: Phaser.Tweens.Tween | null = null;
   private woundGlow: Phaser.GameObjects.Image | null = null;
   private readonly discAlpha: number;
+  /** Base uniform scale of the figure (sprite size-normalization; 1 for the
+   * placeholder image). Breath oscillates scaleY around this. */
+  private figureBaseScale = 1;
 
   constructor(
     scene: Phaser.Scene,
@@ -91,11 +94,13 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       // Animated art faces RIGHT: own column (right-facing) stays, the enemy
       // column flips to face left, toward the lane.
       const sprite = scene.add.sprite(0, 0, `${def.id}_idle`).setOrigin(0.5, 1);
-      sprite.setScale(SPRITE_BODY_PX / meta.bodyPx);
+      this.figureBaseScale = SPRITE_BODY_PX / meta.bodyPx;
+      sprite.setScale(this.figureBaseScale);
       if (side === 1) sprite.setFlipX(true);
-      sprite.play(`${def.id}-idle`);
       this.figure = sprite;
       this.anim = sprite;
+      // Idle is intentionally a single static frame + engine breath (below),
+      // not the looped idle anim — the per-frame AI art "boils" when looped.
     } else {
       // Placeholder silhouettes face LEFT: own column flips to face right.
       this.figure = scene.add.image(0, 0, figureKey(def.id, side)).setOrigin(0.5, 1);
@@ -228,9 +233,12 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     // Ultimates fall back to the skill cast if a unit has no dedicated ult sheet.
     if (!this.scene.anims.exists(key) && action === 'ultimate') key = `${this.charId}-skill`;
     if (!this.scene.anims.exists(key)) return;
+    this.breathTween?.remove(); // stop breathing during the action
+    this.breathTween = null;
+    this.figure.scaleY = this.figureBaseScale; // clear any breath offset
     this.anim.play(key);
     this.anim.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-      if (this.alive && this.usingSprites) this.anim?.play(`${this.charId}-idle`, true);
+      if (this.alive && this.usingSprites) this.startBreath(); // back to smooth static idle
     });
   }
 
@@ -325,9 +333,10 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       this.rig.setPosition(60, 96).setAngle(0).setScale(1);
       this.figure.setAlpha(1).clearTint();
       if (alive) {
-        this.anim.play(`${this.charId}-idle`, true);
+        this.startBreath(); // static idle frame + smooth breath (no boiling loop)
         this.groundDisc.setAlpha(this.discAlpha);
       } else if (this.scene.anims.exists(`${this.charId}-down`)) {
+        this.figure.setScale(this.figureBaseScale);
         this.anim.play(`${this.charId}-down`); // hold the final downed frame
         this.anim.anims.setProgress(1);
         this.anim.anims.pause();
@@ -359,15 +368,17 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   private startBreath(unitId?: string): void {
     if (unitId) this.breathId = unitId;
-    if (this.usingSprites) {
-      this.anim?.play(`${this.charId}-idle`, true); // the idle animation IS the breath
-      return;
-    }
-    const breath = BREATH[this.breathId] ?? { scaleY: 1.03, ms: 900 };
     this.breathTween?.remove();
+    const breath = BREATH[this.breathId] ?? { scaleY: 1.03, ms: 900 };
+    const base = this.figureBaseScale;
+    if (this.usingSprites && this.anim) {
+      this.anim.stop(); // hold one crisp idle frame; smooth scale tween IS the breath
+      this.anim.setTexture(`${this.charId}_idle`, 0);
+    }
+    this.figure.setScale(base); // reset before oscillating scaleY around base
     this.breathTween = this.scene.tweens.add({
       targets: this.figure,
-      scaleY: breath.scaleY,
+      scaleY: base * breath.scaleY,
       duration: breath.ms,
       yoyo: true,
       repeat: -1,
