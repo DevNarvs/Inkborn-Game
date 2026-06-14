@@ -151,6 +151,33 @@
       "frames": 10,
       "fps": 12,
       "loop": false
+    },
+    "mawgrim_ultimate": {
+      "char": "mawgrim",
+      "action": "ultimate",
+      "frameWidth": 493,
+      "frameHeight": 281,
+      "frames": 8,
+      "fps": 12,
+      "loop": false
+    },
+    "pyra_ultimate": {
+      "char": "pyra",
+      "action": "ultimate",
+      "frameWidth": 341,
+      "frameHeight": 350,
+      "frames": 8,
+      "fps": 12,
+      "loop": false
+    },
+    "vesper_ultimate": {
+      "char": "vesper",
+      "action": "ultimate",
+      "frameWidth": 346,
+      "frameHeight": 372,
+      "frames": 8,
+      "fps": 12,
+      "loop": false
     }
   }
 }

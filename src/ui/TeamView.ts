@@ -3,6 +3,7 @@ import { FORMATION, UNITS } from '../data/units';
 import type { CombatState, Side } from '../engine/types';
 import { COLORS, GAME_WIDTH, textStyle } from './theme';
 import { UnitSprite } from './UnitSprite';
+import type { UnitAction } from './UnitSprite';
 
 /** Axie-style face-off battlefield: own column on the left facing right,
  * enemy column on the right facing left, attacks crossing the center lane.
@@ -127,7 +128,7 @@ export class TeamView extends Phaser.GameObjects.Container {
   }
 
   /** Play an actor's one-shot action animation (no-op in placeholder mode). */
-  playAction(side: Side, slot: number, action: 'attack' | 'skill' | 'hit' | 'down'): void {
+  playAction(side: Side, slot: number, action: UnitAction): void {
     this.sprite(side, slot).playAction(action);
   }
 

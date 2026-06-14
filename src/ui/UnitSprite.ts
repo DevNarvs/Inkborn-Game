@@ -15,7 +15,7 @@ const BREATH: Record<string, { scaleY: number; ms: number }> = {
  * from the sheet's measured bodyPx, so all three units read the same size). */
 const SPRITE_BODY_PX = 116;
 
-export type UnitAction = 'attack' | 'skill' | 'hit' | 'down';
+export type UnitAction = 'attack' | 'skill' | 'ultimate' | 'hit' | 'down';
 
 interface SpriteMeta {
   bodyPx: number;
@@ -224,7 +224,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
    * placeholder mode or once KO'd (the figure can't act). */
   playAction(action: UnitAction): void {
     if (!this.usingSprites || !this.anim || !this.alive) return;
-    const key = `${this.charId}-${action}`;
+    let key = `${this.charId}-${action}`;
+    // Ultimates fall back to the skill cast if a unit has no dedicated ult sheet.
+    if (!this.scene.anims.exists(key) && action === 'ultimate') key = `${this.charId}-skill`;
     if (!this.scene.anims.exists(key)) return;
     this.anim.play(key);
     this.anim.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
