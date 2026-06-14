@@ -140,16 +140,35 @@ export class TeamView extends Phaser.GameObjects.Container {
     this.sprite(side, slot).addStatus(kind);
   }
 
-  /** Melee step from actor toward victim; onImpact fires at contact.
-   * Direction-agnostic: derived from the two anchors, so it works for any
-   * staging (face-off columns, sweeps hitting the back line, etc.). */
+  /** World-space melee dash vector: travel toward the victim along the lane,
+   * stopping a gap short so the figures meet rather than overlap. Centralized
+   * so the rig tween and the dash-afterimage VFX use identical geometry. */
+  private dashDelta(actor: UnitSprite, victim: UnitSprite): { x: number; y: number } {
+    const GAP = 70;
+    const wx = victim.chest().x - actor.chest().x;
+    const wy = victim.chest().y - actor.chest().y;
+    const dist = Math.hypot(wx, wy) || 1;
+    const travel = Math.max(0, dist - GAP);
+    return { x: (wx / dist) * travel, y: (wy / dist) * travel };
+  }
+
+  /** World feet-point the attacker dashes to — for dash-afterimage VFX. */
+  meleeDashTarget(side: Side, slot: number, targetSide: Side, targetSlot: number): { x: number; y: number } {
+    const actor = this.sprite(side, slot);
+    const d = this.dashDelta(actor, this.sprite(targetSide, targetSlot));
+    const feet = actor.feet();
+    return { x: feet.x + d.x, y: feet.y + d.y };
+  }
+
+  /** Melee dash from actor into the victim; onImpact fires at contact, then the
+   * unit dashes back. Direction-agnostic (derived from anchors) so it works for
+   * any staging. The dasher renders above the units it crosses. */
   lunge(side: Side, slot: number, targetSide: Side, targetSlot: number, onImpact: () => void): void {
     const actor = this.sprite(side, slot);
-    const victim = this.sprite(targetSide, targetSlot);
-    const s = actor.scaleX;
-    const dx = Phaser.Math.Clamp((victim.chest().x - actor.chest().x) * 0.25, -34, 34) / s;
-    const dy = Phaser.Math.Clamp((victim.chest().y - actor.chest().y) * 0.15, -14, 14) / s;
-    actor.lunge(dx, dy, onImpact);
+    const d = this.dashDelta(actor, this.sprite(targetSide, targetSlot));
+    const s = actor.scaleX || 1;
+    actor.setDepth(1); // dash over the ranks it crosses
+    actor.lunge(d.x / s, d.y / s, onImpact, () => actor.setDepth(0));
   }
 
   float(index: number, message: string, color: string, yOffset = 0, size = 18): void {

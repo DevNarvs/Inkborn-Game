@@ -275,13 +275,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.scene.tweens.add({ targets: this.rig, scale, duration: 90, yoyo: true, ease: 'Quad.easeOut' });
   }
 
-  /** Melee step toward the victim; `onImpact` fires at contact, then return. */
+  /** Melee dash toward the victim; `onImpact` fires at contact, then the unit
+   * dashes back. Dash-in stays under the 2×-speed step budget so the hit lands
+   * before the next event. */
   lunge(dx: number, dy: number, onImpact: () => void, onDone?: () => void): void {
     this.scene.tweens.add({
       targets: this.rig,
       x: 60 + dx,
       y: 96 + dy,
-      duration: 140,
+      duration: 260, // slower rush so the dash reads
       ease: 'Quad.easeIn',
       onComplete: () => {
         onImpact();
@@ -289,8 +291,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
           targets: this.rig,
           x: 60,
           y: 96,
-          duration: 200,
-          ease: 'Quad.easeOut',
+          duration: 260,
+          delay: 160, // linger at contact so the strike lands before recoiling
+          ease: 'Back.easeOut',
           onComplete: onDone,
         });
       },
@@ -329,6 +332,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   resetFromState(alive: boolean): void {
     this.killMotion();
     this.alive = alive;
+    this.setDepth(0); // clear any dash depth-bump left over from a melee strike
     if (this.usingSprites && this.anim) {
       this.rig.setPosition(60, 96).setAngle(0).setScale(1);
       this.figure.setAlpha(1).clearTint();

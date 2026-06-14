@@ -69,11 +69,13 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
       case 'taunt':
         return 450;
       case 'card':
-        return event.isUltimate ? 1100 : 500;
+        return event.isUltimate ? 1400 : 620;
       case 'damage': {
         const fx = SKILL_FX.get(event.source);
-        if (!this.isDirected(event.source) || !fx) return 380;
-        return fx.delivery === 'melee' ? 540 : 620;
+        if (!this.isDirected(event.source) || !fx) return 480;
+        // Directed hits get a long beat so the dash/projectile, impact, and
+        // recoil all play out before the next event.
+        return 820;
       }
       case 'heal':
         return 400;
@@ -82,7 +84,7 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
       case 'energyRefund':
         return 320;
       case 'ko':
-        return 700;
+        return 820;
       case 'fizzle':
         return 360;
       case 'dot':
@@ -225,19 +227,17 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
     };
 
     if (fx.delivery === 'melee') {
-      const feet = actor.feet();
-      const lungeTo = {
-        x: feet.x + Phaser.Math.Clamp((victimChest.x - actor.chest().x) * 0.25, -34, 34),
-        y: feet.y + Phaser.Math.Clamp((victimChest.y - actor.chest().y) * 0.15, -14, 14),
-      };
+      const lungeTo = this.team.meleeDashTarget(pending.side, pending.slot, event.side, event.slot);
       fx.pre?.(this.vfx, {
-        attacker: feet,
+        attacker: actor.feet(),
         victim: victimChest,
         figKey: actor.figureTexture(),
         flipX: actor.isFlipped(),
         lungeTo,
         scale: actor.scaleX,
       });
+      // Replay the strike pose synced to the dash so the unit attacks as it arrives.
+      this.team.playAction(pending.side, pending.slot, pending.isUltimate ? 'ultimate' : 'attack');
       this.team.lunge(pending.side, pending.slot, event.side, event.slot, land);
       return;
     }
@@ -267,7 +267,7 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
         victimChest,
         fx.tint,
         fx.projectileKey ?? 'fx-orb',
-        { ms: 200 / this.speed, arcHeight: fx.arcHeight ?? 0, sx: fx.projectileScale?.x ?? 1, sy: fx.projectileScale?.y ?? 1 },
+        { ms: 300 / this.speed, arcHeight: fx.arcHeight ?? 0, sx: fx.projectileScale?.x ?? 1, sy: fx.projectileScale?.y ?? 1 },
         land,
       );
     });
