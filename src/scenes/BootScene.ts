@@ -40,7 +40,7 @@ export class BootScene extends Phaser.Scene {
       const [trie] = await Promise.all([this.loadDictionary(status), this.loadSprites()]);
       status.setText(`${trie.size.toLocaleString()} words inked`);
       this.time.delayedCall(300, () => {
-        this.scene.start('Match', { trie, seed: Date.now() >>> 0 });
+        this.scene.start('Menu', { trie });
       });
     } catch (error) {
       status.setText(`Failed to load: ${String(error)}\nRefresh to retry.`);

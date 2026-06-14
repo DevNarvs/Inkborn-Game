@@ -27,6 +27,8 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
   /** The unit whose card is currently resolving; damage events are attributed
    * to it iff their `source` matches (sweep = one card event, many damages). */
   private pending: Pending | null = null;
+  /** Playback speed multiplier (player setting); scales the gap between beats. */
+  speed = 1;
 
   constructor(scene: Phaser.Scene, team: TeamView, vfx: Vfx) {
     super(scene, 0, 0);
@@ -48,13 +50,13 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
     let i = 0;
     const next = (): void => {
       if (i >= steps.length) {
-        this.scene.time.delayedCall(600, onDone);
+        this.scene.time.delayedCall(600 / this.speed, onDone);
         return;
       }
       const event = steps[i];
       this.step(event);
       i++;
-      this.scene.time.delayedCall(this.stepMs(event), next);
+      this.scene.time.delayedCall(this.stepMs(event) / this.speed, next);
     };
     next();
   }
@@ -127,7 +129,7 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
         const tint = SKILL_FX.get(event.name)?.tint ?? ELEMENT_COLORS[element];
         // Animated units act here (ult maps to the skill animation); the rig
         // pop + VFX still play over the top for placeholder mode and FX flavor.
-        this.team.playAction(event.side, event.slot, event.isUltimate ? 'skill' : 'attack');
+        this.team.playAction(event.side, event.slot, event.isUltimate ? 'ultimate' : 'attack');
         if (event.isUltimate) {
           this.vfx.banner(event.name, tint);
           this.vfx.dim(SKILL_FX.get(event.name)?.dimMs ?? 900);
@@ -250,20 +252,22 @@ export class ResolutionPlayer extends Phaser.GameObjects.Container {
       lungeTo: victimChest,
       scale: actor.scaleX,
     });
+    // Deferred impact timings scale with speed too, so the hit always lands
+    // before the next event fires (which is also scaled by speed in play()).
     if (fx.noTravel) {
-      this.scene.time.delayedCall(120, land);
+      this.scene.time.delayedCall(120 / this.speed, land);
       return;
     }
     const from = fx.fromAbove
       ? { x: victimChest.x + 6, y: victimChest.y - 50 }
       : actor.chest();
-    this.scene.time.delayedCall(fx.launchDelayMs ?? 60, () => {
+    this.scene.time.delayedCall((fx.launchDelayMs ?? 60) / this.speed, () => {
       this.vfx.projectile(
         from,
         victimChest,
         fx.tint,
         fx.projectileKey ?? 'fx-orb',
-        { ms: 200, arcHeight: fx.arcHeight ?? 0, sx: fx.projectileScale?.x ?? 1, sy: fx.projectileScale?.y ?? 1 },
+        { ms: 200 / this.speed, arcHeight: fx.arcHeight ?? 0, sx: fx.projectileScale?.x ?? 1, sy: fx.projectileScale?.y ?? 1 },
         land,
       );
     });

@@ -20,6 +20,9 @@ import type {
 } from './types';
 
 export const RUMBLE_EVERY = 3;
+// PRD §timers defaults. The word/rumble phase length is player-adjustable via
+// src/ui/settings.ts (these stay the canonical "Normal" values); card phase is
+// fixed for now. All are UI pacing only — server-enforced in Phase 1.
 export const WORD_PHASE_SECONDS = 20;
 export const RUMBLE_PHASE_SECONDS = 15;
 export const CARD_PHASE_SECONDS = 25;

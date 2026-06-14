@@ -2,12 +2,7 @@ import Phaser from 'phaser';
 import { cardDef, ultimateForUnit } from '../data/cards';
 import { FORMATION } from '../data/units';
 import { botPickWords, botPlanCards } from '../engine/bot';
-import {
-  CARD_PHASE_SECONDS,
-  Match,
-  RUMBLE_PHASE_SECONDS,
-  WORD_PHASE_SECONDS,
-} from '../engine/match';
+import { CARD_PHASE_SECONDS, Match } from '../engine/match';
 import type { WordPhaseOutcome } from '../engine/match';
 import { mulberry32 } from '../engine/rng';
 import type { Rng } from '../engine/rng';
@@ -24,6 +19,7 @@ import { ResolutionPlayer } from '../ui/ResolutionPlayer';
 import { TeamView } from '../ui/TeamView';
 import { Vfx } from '../ui/Vfx';
 import { WordModal } from '../ui/WordModal';
+import { getSettings, rumbleSeconds } from '../ui/settings';
 import { COLORS, GAME_HEIGHT, GAME_WIDTH, LAYOUT, textStyle } from '../ui/theme';
 
 interface MatchSceneData {
@@ -140,7 +136,8 @@ export class MatchScene extends Phaser.Scene {
     this.player.setVisible(false);
     this.info.setText('');
 
-    const seconds = s.isRumble ? RUMBLE_PHASE_SECONDS : WORD_PHASE_SECONDS;
+    const settings = getSettings();
+    const seconds = s.isRumble ? rumbleSeconds(settings) : settings.wordSeconds;
     this.hud.startTimer(seconds, () => this.lockWord());
     this.modal.setCountdown(seconds);
     this.countdownEvent?.remove(false);
@@ -382,6 +379,7 @@ export class MatchScene extends Phaser.Scene {
   private enterResolution(events: ReturnType<Match['resolve']>): void {
     this.hand.setVisible(false);
     this.player.setVisible(true);
+    this.player.speed = getSettings().battleSpeed;
     this.hud.setPhase('RESOLUTION');
     this.info.setText('');
 
@@ -416,8 +414,10 @@ export class MatchScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(101);
 
+    overlay.setInteractive(); // swallow clicks behind the modal
+
     const again = this.add
-      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 50, 220, 52, 0x5b3fa8)
+      .rectangle(GAME_WIDTH / 2 - 120, GAME_HEIGHT / 2 + 56, 220, 52, 0x5b3fa8)
       .setStrokeStyle(2, COLORS.goldHex)
       .setDepth(101)
       .setInteractive({ useHandCursor: true });
@@ -425,9 +425,21 @@ export class MatchScene extends Phaser.Scene {
       .text(again.x, again.y, 'PLAY AGAIN', textStyle(18, COLORS.gold))
       .setOrigin(0.5)
       .setDepth(102);
-    overlay.setInteractive(); // swallow clicks behind the modal
     again.on('pointerup', () => {
       this.scene.restart({ trie: this.trie, seed: Date.now() >>> 0 });
+    });
+
+    const menu = this.add
+      .rectangle(GAME_WIDTH / 2 + 120, GAME_HEIGHT / 2 + 56, 220, 52, COLORS.panelLight)
+      .setStrokeStyle(2, COLORS.goldHex)
+      .setDepth(101)
+      .setInteractive({ useHandCursor: true });
+    this.add
+      .text(menu.x, menu.y, 'MAIN MENU', textStyle(18, COLORS.gold))
+      .setOrigin(0.5)
+      .setDepth(102);
+    menu.on('pointerup', () => {
+      this.scene.start('Menu', { trie: this.trie });
     });
   }
 }

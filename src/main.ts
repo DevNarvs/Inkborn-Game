@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { MenuScene } from './scenes/MenuScene';
 import { MatchScene } from './scenes/MatchScene';
 import './style.css';
 import { COLORS, GAME_HEIGHT, GAME_WIDTH } from './ui/theme';
@@ -14,7 +15,7 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, MatchScene],
+  scene: [BootScene, MenuScene, MatchScene],
 });
 
 // Dev-only handle for in-browser debugging/automation; absent in release builds.
